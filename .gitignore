@@ -6,3 +6,4 @@ dist/
 *.spec
 vendor/
 .claude/settings.local.json
+SPEC.md
