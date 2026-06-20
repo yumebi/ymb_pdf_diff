@@ -31,6 +31,17 @@
 | Macインストーラ(dmg) | hdiutil(macOS標準搭載) |
 | CI/CD | GitHub Actions |
 
+## インストール
+
+[Releases](https://github.com/yumebi/ymb_pdf_diff/releases) からOS別のインストーラをダウンロードして実行する。
+
+- Windows: `YMB_PDF_DIFF_Setup.exe`
+- Mac: `YMB_PDF_DIFF.dmg`
+
+> **インストール時に警告が出る場合がある。** コード署名を行っていないため、Windowsでは「Windows によって PC が保護されました」(SmartScreen)、Macでは「開発元が未確認のため開けません」(Gatekeeper)という警告が表示される可能性がある。問題のあるファイルではないので、以下の手順で進めること。
+> - **Windows**: 警告画面で「詳細情報」→「実行」をクリック
+> - **Mac**: ファイルを右クリック→「開く」を選択(または システム設定 → プライバシーとセキュリティ で許可)
+
 ## 必要環境
 
 - Python 3.9+
