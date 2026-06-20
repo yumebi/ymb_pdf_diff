@@ -131,5 +131,3 @@ samples/       # 動作確認用サンプルPDF
 ## License
 
 MIT License © 2026 ymb
-
-詳細は [LICENSE](LICENSE) を参照。
