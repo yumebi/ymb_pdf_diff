@@ -2,8 +2,7 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -13,10 +12,60 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
+  determine-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Bump patch version, tag, and update version.json
+        id: bump
+        run: |
+          set -e
+          git fetch --tags origin
+          LATEST_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v0.0.0"
+          fi
+          VERSION_NO_V=${LATEST_TAG#v}
+          MAJOR=$(echo "$VERSION_NO_V" | cut -d. -f1)
+          MINOR=$(echo "$VERSION_NO_V" | cut -d. -f2)
+          PATCH=$(echo "$VERSION_NO_V" | cut -d. -f3)
+          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          NEW_TAG="v$NEW_VERSION"
+
+          sed -i "s/__version__ = \".*\"/__version__ = \"$NEW_VERSION\"/" ymb_pdf_diff/__init__.py
+          sed -i "s/#define AppVersion \".*\"/#define AppVersion \"$NEW_VERSION\"/" packaging/windows/installer.iss
+          cat > version.json <<EOF
+          {
+            "latest_version": "$NEW_VERSION",
+            "download_url": "https://github.com/${{ github.repository }}/releases/tag/$NEW_TAG"
+          }
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ymb_pdf_diff/__init__.py packaging/windows/installer.iss version.json
+          git commit -m "Release $NEW_VERSION [skip ci]"
+          git tag "$NEW_TAG"
+          git push origin main
+          git push origin "$NEW_TAG"
+
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+
   build-windows:
+    needs: determine-version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.determine-version.outputs.tag }}
 
       - uses: actions/setup-python@v5
         with:
@@ -48,15 +97,18 @@ jobs:
           path: packaging/windows/YMB_PDF_DIFF_Setup.exe
 
       - name: Publish to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.determine-version.outputs.tag }}
           files: packaging/windows/YMB_PDF_DIFF_Setup.exe
 
   build-macos:
+    needs: determine-version
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.determine-version.outputs.tag }}
 
       - uses: actions/setup-python@v5
         with:
@@ -78,34 +130,7 @@ jobs:
           path: dist/YMB_PDF_DIFF.dmg
 
       - name: Publish to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.determine-version.outputs.tag }}
           files: dist/YMB_PDF_DIFF.dmg
-
-  update-version-json:
-    needs: [build-windows, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-
-      - name: Update version.json
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          cat > version.json <<EOF
-          {
-            "latest_version": "$VERSION",
-            "download_url": "https://github.com/${{ github.repository }}/releases/tag/${GITHUB_REF_NAME}"
-          }
-          EOF
-
-      - name: Commit and push if changed
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json
-          git diff --cached --quiet || git commit -m "Update version.json for ${GITHUB_REF_NAME}"
-          git push origin main
