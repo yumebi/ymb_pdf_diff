@@ -4,8 +4,7 @@ from typing import Optional
 import requests
 from packaging.version import InvalidVersion, parse as parse_version
 
-# TODO: 実際のGitHub公開リポジトリが決まったら owner/repo を差し替える
-DEFAULT_VERSION_URL = "https://raw.githubusercontent.com/<owner>/<repo>/main/version.json"
+DEFAULT_VERSION_URL = "https://raw.githubusercontent.com/yumebi/ymb_pdf_diff/main/version.json"
 DEFAULT_TIMEOUT = 3.0
 
 
