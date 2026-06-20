@@ -13,6 +13,24 @@
 - **セッション保存/読込**: 差分結果を`.ymbdiff`形式で保存、元PDFなしでも再表示可能
 - **自動更新チェック**: 起動時に新バージョン通知(任意)
 
+## 技術スタック
+
+| 用途 | ライブラリ/ツール |
+|---|---|
+| 言語 | Python 3.9+ |
+| GUI | PySide6 |
+| PDF読込・テキスト抽出・画像化 | PyMuPDF (fitz) |
+| 画像差分 | Pillow / numpy |
+| テキスト整列・差分 | difflib(標準ライブラリ) |
+| OCR(スキャンPDF対応) | pytesseract + Tesseract-OCR |
+| Excelレポート出力 | openpyxl |
+| バージョン比較 | packaging |
+| HTTP通信(自動更新チェック) | requests |
+| ビルド | PyInstaller |
+| Windowsインストーラ | Inno Setup |
+| Macインストーラ(dmg) | hdiutil(macOS標準搭載) |
+| CI/CD | GitHub Actions |
+
 ## 必要環境
 
 - Python 3.9+
