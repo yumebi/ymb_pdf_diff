@@ -91,7 +91,7 @@ def _pil_to_pixmap(img) -> QPixmap:
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("YMB PDF DIFF")
+        self.setWindowTitle(f"YMB PDF DIFF v{__version__}")
         self.resize(1400, 900)
         icon_path = asset_path("icon.ico")
         if icon_path.exists():
