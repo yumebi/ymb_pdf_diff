@@ -45,6 +45,17 @@ python scripts/build.py
 
 Windowsはexe(`--icon`付き)、Macはネイティブ.appが`dist/`に生成される(各OS上で実行すること、クロスコンパイル不可)。
 
+### GitHub Actionsで自動リリース
+
+`v*.*.*` 形式のタグをpushすると、[.github/workflows/release.yml](.github/workflows/release.yml) がWindows/Mac両方でビルドし、Windowsインストーラ(.exe)とMacのdmgをGitHub Releasesに自動添付する。
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+タグなしで`workflow_dispatch`から手動実行も可能(その場合はビルドのみ、Releaseへの公開はスキップ)。
+
 ### OCR(Tesseract)を同梱する場合
 
 ```bash
