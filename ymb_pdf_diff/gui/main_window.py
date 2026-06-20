@@ -53,6 +53,33 @@ _STATUS_TO_COLOR_KEY = {"changed": "changed", "inserted": "inserted", "deleted":
 _TEXT_KIND_LABEL = {"replace": "変更", "insert": "追加", "delete": "削除"}
 _KIND_TO_COLOR_KEY = {"replace": "changed", "insert": "inserted", "delete": "deleted"}
 
+_BUTTON_STYLE = """
+QPushButton {
+    background-color: #D7E3F4;
+    border: 1px solid #7E96B8;
+    border-radius: 4px;
+    padding: 4px 12px;
+    margin: 3px;
+    color: #15233D;
+}
+QPushButton:hover {
+    background-color: #BFD3EE;
+    border-color: #4C7BC2;
+}
+QPushButton:pressed {
+    background-color: #9FBBE0;
+}
+QPushButton:checked {
+    background-color: #6FA0DD;
+    border-color: #2E5FA0;
+}
+QPushButton:disabled {
+    background-color: #E0E0E0;
+    border-color: #C0C0C0;
+    color: #909090;
+}
+"""
+
 
 def _pil_to_pixmap(img) -> QPixmap:
     rgb = img.convert("RGB")
@@ -84,16 +111,16 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(500, self._check_for_update)
 
     def _build_ui(self) -> None:
+        self.setStyleSheet(_BUTTON_STYLE)
+
         toolbar = QToolBar()
         self.addToolBar(toolbar)
 
         self.btn_select_a = QPushButton("ファイルA選択")
         self.btn_select_a.clicked.connect(self._select_a)
-        toolbar.addWidget(self.btn_select_a)
 
         self.btn_select_b = QPushButton("ファイルB選択")
         self.btn_select_b.clicked.connect(self._select_b)
-        toolbar.addWidget(self.btn_select_b)
 
         self.btn_compare = QPushButton("比較実行")
         self.btn_compare.clicked.connect(self._run_compare)
@@ -153,11 +180,21 @@ class MainWindow(QMainWindow):
 
         self.view_a = ImageView()
         self.view_a.set_placeholder("ファイルA")
-        splitter.addWidget(self.view_a)
+        panel_a = QWidget()
+        layout_a = QVBoxLayout(panel_a)
+        layout_a.setContentsMargins(0, 0, 0, 0)
+        layout_a.addWidget(self.btn_select_a)
+        layout_a.addWidget(self.view_a)
+        splitter.addWidget(panel_a)
 
         self.view_b = ImageView()
         self.view_b.set_placeholder("ファイルB")
-        splitter.addWidget(self.view_b)
+        panel_b = QWidget()
+        layout_b = QVBoxLayout(panel_b)
+        layout_b.setContentsMargins(0, 0, 0, 0)
+        layout_b.addWidget(self.btn_select_b)
+        layout_b.addWidget(self.view_b)
+        splitter.addWidget(panel_b)
 
         # ズーム・スクロールをA/B間で連動させる(emit=Falseで無限ループを防止)
         self.view_a.zoomed.connect(lambda factor: self.view_b.set_zoom(factor, emit=False))
