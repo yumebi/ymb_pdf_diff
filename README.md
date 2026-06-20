@@ -103,3 +103,9 @@ packaging/     # Windowsインストーラ(.iss)・Mac dmgスクリプト
 tests/         # 単体テスト(pytest不使用、直接実行)
 samples/       # 動作確認用サンプルPDF
 ```
+
+## License
+
+MIT License © 2026 ymb
+
+詳細は [LICENSE](LICENSE) を参照。
