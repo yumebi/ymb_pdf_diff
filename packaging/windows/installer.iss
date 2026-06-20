@@ -3,7 +3,7 @@
 ; コード署名は行わない(SPEC.md 6章の決定事項)。
 
 #define AppName "YMB PDF DIFF"
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 #define DistDir "..\..\dist\YMB PDF DIFF"
 
 [Setup]
