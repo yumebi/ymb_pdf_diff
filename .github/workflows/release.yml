@@ -62,10 +62,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add ymb_pdf_diff/__init__.py packaging/windows/installer.iss version.json
-          git commit -m "Release $NEW_VERSION [skip ci]"
-          git tag "$NEW_TAG"
+          git diff --cached --quiet || git commit -m "Release $NEW_VERSION [skip ci]"
+          git tag -f "$NEW_TAG"
           git push origin main
-          git push origin "$NEW_TAG"
+          git push origin "$NEW_TAG" --force
 
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
