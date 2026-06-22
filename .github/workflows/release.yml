@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "リリースするバージョン(例: 1.0.0)。空ならpatchを自動インクリメント"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -25,18 +30,24 @@ jobs:
 
       - name: Bump patch version, tag, and update version.json
         id: bump
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           set -e
-          git fetch --tags origin
-          LATEST_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)
-          if [ -z "$LATEST_TAG" ]; then
-            LATEST_TAG="v0.0.0"
+          if [ -n "$INPUT_VERSION" ]; then
+            NEW_VERSION="$INPUT_VERSION"
+          else
+            git fetch --tags origin
+            LATEST_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)
+            if [ -z "$LATEST_TAG" ]; then
+              LATEST_TAG="v0.0.0"
+            fi
+            VERSION_NO_V=${LATEST_TAG#v}
+            MAJOR=$(echo "$VERSION_NO_V" | cut -d. -f1)
+            MINOR=$(echo "$VERSION_NO_V" | cut -d. -f2)
+            PATCH=$(echo "$VERSION_NO_V" | cut -d. -f3)
+            NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
           fi
-          VERSION_NO_V=${LATEST_TAG#v}
-          MAJOR=$(echo "$VERSION_NO_V" | cut -d. -f1)
-          MINOR=$(echo "$VERSION_NO_V" | cut -d. -f2)
-          PATCH=$(echo "$VERSION_NO_V" | cut -d. -f3)
-          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
           NEW_TAG="v$NEW_VERSION"
 
           sed -i "s/__version__ = \".*\"/__version__ = \"$NEW_VERSION\"/" ymb_pdf_diff/__init__.py
