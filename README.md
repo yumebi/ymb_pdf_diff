@@ -13,6 +13,31 @@
 - **セッション保存/読込**: 差分結果を`.ymbdiff`形式で保存、元PDFなしでも再表示可能
 - **自動更新チェック**: 起動時に新バージョン通知(任意)
 
+## 開発環境のセットアップ
+
+### 必要環境
+
+- Python 3.9+
+- Windows or macOS
+- (OCR利用時) Tesseract-OCR本体 ※同梱ビルドなら不要
+
+### セットアップ
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+python -m ymb_pdf_diff   # GUI起動
+```
+
+CLIで動作確認する場合:
+
+```bash
+python -m ymb_pdf_diff.cli sample_A.pdf sample_B.pdf --excel diff_report.xlsx
+```
+
+動作確認用サンプルPDFは `samples/sample_A.pdf` / `samples/sample_B.pdf` にある(`scripts/make_sample_pdfs.py`で再生成可能)。
+
 ## 技術スタック
 
 | 用途 | ライブラリ/ツール |
@@ -31,88 +56,6 @@
 | Macインストーラ(dmg) | hdiutil(macOS標準搭載) |
 | CI/CD | GitHub Actions |
 
-## インストール
-
-[Releases](https://github.com/yumebi/ymb_pdf_diff/releases) からOS別のインストーラをダウンロードして実行する。
-
-- Windows: `YMB_PDF_DIFF_Setup.exe`
-- Mac: `YMB_PDF_DIFF.dmg`
-
-> **インストール時に警告が出る場合がある。** コード署名を行っていないため、Windowsでは「Windows によって PC が保護されました」(SmartScreen)、Macでは「開発元が未確認のため開けません」(Gatekeeper)という警告が表示される可能性がある。問題のあるファイルではないので、以下の手順で進めること。
-> - **Windows**: 警告画面で「詳細情報」→「実行」をクリック
-> - **Mac**: ファイルを右クリック→「開く」を選択(または システム設定 → プライバシーとセキュリティ で許可)
-
-## 必要環境
-
-- Python 3.9+
-- Windows or macOS
-- (OCR利用時) Tesseract-OCR本体 ※同梱ビルドなら不要、詳細は下記
-
-## セットアップ(開発)
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate   # Windows
-pip install -r requirements.txt
-python -m ymb_pdf_diff   # GUI起動
-```
-
-CLIで動作確認する場合:
-
-```bash
-python -m ymb_pdf_diff.cli sample_A.pdf sample_B.pdf --excel diff_report.xlsx
-```
-
-動作確認用サンプルPDFは `samples/sample_A.pdf` / `samples/sample_B.pdf` にある(`scripts/make_sample_pdfs.py`で再生成可能)。
-
-## ビルド(配布用パッケージ作成)
-
-```bash
-pip install -r requirements-dev.txt
-python scripts/build.py
-```
-
-Windowsはexe(`--icon`付き)、Macはネイティブ.appが`dist/`に生成される(各OS上で実行すること、クロスコンパイル不可)。
-
-### GitHub Actionsで自動リリース
-
-`main`にpushするたび、[.github/workflows/release.yml](.github/workflows/release.yml) が自動でpatchバージョンを+1し(`ymb_pdf_diff/__init__.py`・`installer.iss`・`version.json`を更新してコミット+タグpush)、Windows/Mac両方でビルドして新しいタグでGitHub Releaseを作成・公開する。手動でのタグ作成は不要。
-
-タグやバージョン番号を手で指定したい場合は、`.github/workflows/release.yml`の`determine-version`ジョブを編集する。
-
-### OCR(Tesseract)を同梱する場合
-
-```bash
-python scripts/fetch_tesseract_vendor.py   # システムにインストール済みのTesseract-OCRからvendor/tesseract/を作成
-python scripts/build.py                     # vendor/があれば自動的に同梱される
-```
-
-未同梱の場合、実行環境にTesseract-OCRが別途インストールされていればOCRは動作する(`jpn`言語データの追加が必要)。
-
-### Windowsインストーラ
-
-[Inno Setup](https://jrsoftware.org/isinfo.php) をインストール後:
-
-```bash
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\windows\installer.iss
-```
-
-### Macのdmg
-
-```bash
-bash packaging/macos/build_dmg.sh
-```
-
-## テスト
-
-```bash
-python tests/test_aligner.py
-python tests/test_image_diff.py
-# 他、tests/ 配下の各ファイルを個別実行(pytest不使用)
-```
-
-GUI関連テストは画面なし環境でも動くよう `QT_QPA_PLATFORM=offscreen` を使用。
-
 ## プロジェクト構成
 
 ```
@@ -128,6 +71,27 @@ tests/         # 単体テスト(pytest不使用、直接実行)
 samples/       # 動作確認用サンプルPDF
 ```
 
-## License
+## テスト
 
-MIT License © 2026 ymb
+```bash
+python tests/test_aligner.py
+python tests/test_image_diff.py
+# 他、tests/ 配下の各ファイルを個別実行(pytest不使用)
+```
+
+GUI関連テストは画面なし環境でも動くよう `QT_QPA_PLATFORM=offscreen` を使用。
+
+## ダウンロード
+
+[Releases](https://github.com/yumebi/ymb_pdf_diff/releases) からOS別のインストーラをダウンロードして実行する。
+
+- Windows: `YMB_PDF_DIFF_Setup.exe`
+- Mac: `YMB_PDF_DIFF.dmg`
+
+> **インストール時に警告が出る場合がある。** コード署名を行っていないため、Windowsでは「Windows によって PC が保護されました」(SmartScreen)、Macでは「開発元が未確認のため開けません」(Gatekeeper)という警告が表示される可能性がある。問題のあるファイルではないので、以下の手順で進めること。
+> - **Windows**: 警告画面で「詳細情報」→「実行」をクリック
+> - **Mac**: ファイルを右クリック→「開く」を選択(または システム設定 → プライバシーとセキュリティ で許可)
+
+## ライセンス
+
+[MIT License](LICENSE) © 2026 ymb
