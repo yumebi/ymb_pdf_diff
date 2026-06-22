@@ -3,7 +3,7 @@
 ; コード署名は行わない(SPEC.md 6章の決定事項)。
 ; AppNameは表示名(画面に出る名前)、ExeName/DistDirはPyInstallerが生成する実ファイル名(技術名、固定)。
 
-#define AppName "YMB　PDF差分抽出ツール"
+#define AppName "YMB PDF差分抽出ツール"
 #define ExeName "YMB PDF DIFF.exe"
 #define AppVersion "1.0.0"
 #define DistDir "..\..\dist\YMB PDF DIFF"
