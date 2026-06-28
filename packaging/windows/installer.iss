@@ -20,6 +20,14 @@ Compression=lzma2
 SolidCompression=yes
 DisableProgramGroupPage=yes
 
+[Languages]
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[CustomMessages]
+japanese.LaunchProgram=起動する
+english.LaunchProgram=Launch the application
+
 [Files]
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
@@ -28,4 +36,4 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#ExeName}"
 Name: "{commondesktop}\{#AppName}"; Filename: "{app}\{#ExeName}"
 
 [Run]
-Filename: "{app}\{#ExeName}"; Description: "起動する"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#ExeName}"; Description: "{cm:LaunchProgram}"; Flags: nowait postinstall skipifsilent
