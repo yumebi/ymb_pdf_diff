@@ -3,9 +3,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import numpy as np
 from PIL import Image, ImageDraw
 
-from ymb_pdf_diff.core.image_diff import diff_images
+from ymb_pdf_diff.core.image_diff import diff_images, overlay_images
 
 
 def test_identical_images_have_no_diff():
@@ -43,7 +44,53 @@ def test_two_separated_changes_are_detected_as_two_regions():
     print("OK: test_two_separated_changes_are_detected_as_two_regions")
 
 
+def test_overlay_white_plus_white_stays_white():
+    img_a = Image.new("RGB", (50, 50), "white")
+    img_b = Image.new("RGB", (50, 50), "white")
+    composite = overlay_images(img_a, img_b)
+    pixels = np.array(composite)
+    assert (pixels == 255).all()
+    print("OK: test_overlay_white_plus_white_stays_white")
+
+
+def test_overlay_ink_only_in_a_gives_red():
+    img_a = Image.new("RGB", (50, 50), "white")
+    ImageDraw.Draw(img_a).rectangle([10, 10, 20, 20], fill="black")
+    img_b = Image.new("RGB", (50, 50), "white")
+    composite = overlay_images(img_a, img_b)
+    pixel = composite.getpixel((15, 15))
+    # Aのみにインクがある箇所は赤(R=255,G=0,B=0)になる
+    assert pixel == (255, 0, 0)
+    print("OK: test_overlay_ink_only_in_a_gives_red")
+
+
+def test_overlay_ink_only_in_b_gives_blue():
+    img_a = Image.new("RGB", (50, 50), "white")
+    img_b = Image.new("RGB", (50, 50), "white")
+    ImageDraw.Draw(img_b).rectangle([10, 10, 20, 20], fill="black")
+    composite = overlay_images(img_a, img_b)
+    pixel = composite.getpixel((15, 15))
+    # Bのみにインクがある箇所は青(R=0,G=0,B=255)になる
+    assert pixel == (0, 0, 255)
+    print("OK: test_overlay_ink_only_in_b_gives_blue")
+
+
+def test_overlay_ink_in_both_gives_dark():
+    img_a = Image.new("RGB", (50, 50), "white")
+    img_b = Image.new("RGB", (50, 50), "white")
+    ImageDraw.Draw(img_a).rectangle([10, 10, 20, 20], fill="black")
+    ImageDraw.Draw(img_b).rectangle([10, 10, 20, 20], fill="black")
+    composite = overlay_images(img_a, img_b)
+    pixel = composite.getpixel((15, 15))
+    assert pixel == (0, 0, 0)
+    print("OK: test_overlay_ink_in_both_gives_dark")
+
+
 if __name__ == "__main__":
     test_identical_images_have_no_diff()
     test_localized_change_is_detected_as_single_region()
     test_two_separated_changes_are_detected_as_two_regions()
+    test_overlay_white_plus_white_stays_white()
+    test_overlay_ink_only_in_a_gives_red()
+    test_overlay_ink_only_in_b_gives_blue()
+    test_overlay_ink_in_both_gives_dark()

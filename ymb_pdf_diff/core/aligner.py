@@ -96,17 +96,19 @@ def detect_visual_only_changes(
     pdf_a_path: str,
     pdf_b_path: str,
     dpi: int = 150,
+    threshold: int = 30,
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> None:
     """テキストは同一でも見た目(画像)が異なるページを検出し、statusを"changed"に格上げする(in-place)。
 
     align_documentsはテキストのみで判定するため、画像・図表・色だけが変わったページは
     そのままだと見逃される。テキスト一致で"unchanged"になった全ページ対を画素比較し直す。
+    thresholdは画像差分の感度(0-100、小さいほど敏感。GUIの表示設定で変更可能)。
     """
     total = len(alignment.page_statuses)
     for i, status in enumerate(alignment.page_statuses):
         if status.status == "unchanged" and status.a_page is not None and status.b_page is not None:
-            result = diff_page_pair(pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi)
+            result = diff_page_pair(pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi, threshold=threshold)
             if result.has_diff:
                 status.status = "changed"
                 status.visual_only = True

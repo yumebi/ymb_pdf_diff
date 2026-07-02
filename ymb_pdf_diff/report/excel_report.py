@@ -123,6 +123,8 @@ def _build_detail_sheet_changed(
     ws.cell(row=2, column=1, value="サマリーへ戻る").hyperlink = "#'サマリー'!A1"
     ws.cell(row=2, column=1).font = Font(color="0563C1", underline="single")
 
+    # 画像差分の感度(#新機能7)はGUI表示専用の設定のため、Excelレポートではdiff_page_pairの
+    # デフォルト値(threshold=30)を使う(GUI設定への依存を持ち込まないための意図的な選択)。
     img_result = diff_page_pair(pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi)
     img_a = render_page(pdf_a_path, status.a_page, dpi=dpi)
     img_b = render_page(pdf_b_path, status.b_page, dpi=dpi)

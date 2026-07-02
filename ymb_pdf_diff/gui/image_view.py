@@ -1,3 +1,5 @@
+from typing import Optional
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsTextItem, QGraphicsView
@@ -8,9 +10,13 @@ _ZOOM_STEP = 1.15
 
 
 class ImageView(QGraphicsView):
-    """ズーム(Ctrl+ホイール/ボタン)とドラッグスクロール(ScrollHandDrag)に対応したPDFページ表示用ビュー。"""
+    """ズーム(Ctrl+ホイール/ボタン)とドラッグスクロール(ScrollHandDrag)に対応したPDFページ表示用ビュー。
+
+    PDFファイルのドラッグ&ドロップにも対応し、ドロップ時にfile_droppedシグナルを発火する。
+    """
 
     zoomed = Signal(float)
+    file_dropped = Signal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -24,6 +30,7 @@ class ImageView(QGraphicsView):
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         self._zoom = 1.0
+        self.setAcceptDrops(True)
 
     def set_pixmap(self, pixmap: QPixmap) -> None:
         self._placeholder_item.setPlainText("")
@@ -56,3 +63,36 @@ class ImageView(QGraphicsView):
             event.accept()
         else:
             super().wheelEvent(event)
+
+    @staticmethod
+    def _dropped_pdf_path(event) -> Optional[str]:
+        """イベントがローカルのPDFファイル1つのドロップであれば、そのパスを返す。"""
+        mime = event.mimeData()
+        if not mime.hasUrls():
+            return None
+        for url in mime.urls():
+            if url.isLocalFile() and url.toLocalFile().lower().endswith(".pdf"):
+                return url.toLocalFile()
+        return None
+
+    def dragEnterEvent(self, event) -> None:
+        if self._dropped_pdf_path(event) is not None:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        # QGraphicsViewのデフォルト実装はシーンにイベントを転送するが、
+        # ファイルドロップはビュー自身で処理したいためオーバーライドする。
+        if self._dropped_pdf_path(event) is not None:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event) -> None:
+        path = self._dropped_pdf_path(event)
+        if path is not None:
+            event.acceptProposedAction()
+            self.file_dropped.emit(path)
+        else:
+            event.ignore()

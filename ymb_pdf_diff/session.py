@@ -85,6 +85,8 @@ def save_session(
                         {"kind": e.kind, "before": e.before, "after": e.after}
                         for e in diff_page_lines(pages_a[status.a_page], pages_b[status.b_page])
                     ]
+                    # 画像差分の感度(#新機能7)はGUI表示専用の設定のため、セッション保存でも
+                    # diff_page_pairのデフォルト値(threshold=30)を使う。
                     regions = diff_page_pair(pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi).regions
 
                 if status.a_page is not None:

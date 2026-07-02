@@ -83,6 +83,27 @@ def diff_page_pair(
     return diff_images(img_a, img_b, threshold=threshold, row_gap=row_gap)
 
 
+def overlay_images(img_a: Image.Image, img_b: Image.Image) -> Image.Image:
+    """A/Bページを1枚に重ね合わせた合成画像(重ね表示モード用)を作る。
+
+    それぞれをグレースケール化し(255=白/インクなし, 0=黒/インクあり)、
+    RGBチャンネルへ以下のように割り当てる。
+        R = Bのグレー値, G = A/Bの暗い方(=両方に共通するインク), B = Aのグレー値
+    この割り当てにより、
+        - 両方とも白いピクセルは (255,255,255) のまま白
+        - Aのみにインクがある(A=黒,B=白)ピクセルは (255,0,0) = 赤
+        - Bのみにインクがある(A=白,B=黒)ピクセルは (0,0,255) = 青
+        - 両方にインクがある(A=黒,B=黒)ピクセルは (0,0,0) = 黒(暗く沈む)
+    となり、「赤=ファイルAのみの内容 / 青=ファイルBのみの内容 / 黒=共通」を一目で判別できる。
+    サイズが異なる場合はpad_to_same_sizeで白背景に揃えてから合成する。
+    """
+    canvas_a, canvas_b = pad_to_same_size(img_a, img_b)
+    gray_a = np.array(canvas_a.convert("L"), dtype=np.uint8)
+    gray_b = np.array(canvas_b.convert("L"), dtype=np.uint8)
+    rgb = np.stack([gray_b, np.minimum(gray_a, gray_b), gray_a], axis=-1).astype(np.uint8)
+    return Image.fromarray(rgb, mode="RGB")
+
+
 def draw_highlights(
     image: Image.Image, regions: List[Tuple[int, int, int, int]], color: str = "red", width: int = 3, padding: int = 10
 ) -> Image.Image:

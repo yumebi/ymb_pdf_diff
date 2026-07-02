@@ -1,15 +1,19 @@
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSlider,
     QVBoxLayout,
 )
 
 from .diff_colors import LABELS, DiffColors
+from .diff_settings import get_threshold, set_threshold
 
 
 def _contrasting_text_color(hex_color: str) -> str:
@@ -48,6 +52,23 @@ class ColorSettingsDialog(QDialog):
         reset_btn.clicked.connect(self._reset_defaults)
         layout.addWidget(reset_btn)
 
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(separator)
+
+        # 画像差分の感度(#新機能7): 値が小さいほど、わずかな画素差でも差分として拾う
+        threshold_row = QHBoxLayout()
+        threshold_row.addWidget(QLabel("画像差分の感度(小さいほど敏感)"))
+        self._threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self._threshold_slider.setRange(0, 100)
+        self._threshold_slider.setValue(get_threshold())
+        threshold_row.addWidget(self._threshold_slider)
+        self._threshold_value_label = QLabel(str(get_threshold()))
+        self._threshold_value_label.setMinimumWidth(28)
+        threshold_row.addWidget(self._threshold_value_label)
+        self._threshold_slider.valueChanged.connect(self._on_threshold_changed)
+        layout.addLayout(threshold_row)
+
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         button_box.accepted.connect(self.accept)
         layout.addWidget(button_box)
@@ -65,3 +86,7 @@ class ColorSettingsDialog(QDialog):
             value = self.diff_colors.get(key)
             button.setText(value)
             button.setStyleSheet(_swatch_style(value))
+
+    def _on_threshold_changed(self, value: int) -> None:
+        self._threshold_value_label.setText(str(value))
+        set_threshold(value)
