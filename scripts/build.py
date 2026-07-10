@@ -26,7 +26,8 @@ def main() -> None:
     ]
     if sys.platform == "win32":
         args += ["--icon", str(PROJECT_ROOT / "assets" / "icon.ico")]
-    # macOS: .icns未生成のためアイコン指定は省略(#10でMac実機検証時に追加対応)
+    elif sys.platform == "darwin":
+        args += ["--icon", str(PROJECT_ROOT / "assets" / "icon.icns")]
 
     vendor_dir = PROJECT_ROOT / "vendor" / "tesseract"
     if vendor_dir.exists():

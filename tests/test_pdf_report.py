@@ -62,5 +62,39 @@ def test_build_pdf_report_produces_valid_pdf_with_summary_title():
         output_path.unlink(missing_ok=True)
 
 
+def test_build_pdf_report_with_each_image_size_preset():
+    """#新機能11: image_size="small"/"large"のいずれでも正常にレポートが生成できることを確認する
+    (スモークテスト。ファイルサイズの詳細な比較はscripts/benchmark.pyで行う)。
+    """
+    tmp_dir = Path(__file__).resolve().parent.parent
+    path_a, path_b = _make_sample_pdfs(tmp_dir)
+    output_small = tmp_dir / "pdf_report_sample_output_small.pdf"
+    output_large = tmp_dir / "pdf_report_sample_output_large.pdf"
+    try:
+        pages_a = load_pdf_pages(str(path_a))
+        pages_b = load_pdf_pages(str(path_b))
+        alignment = align_documents(pages_a, pages_b)
+        detect_visual_only_changes(alignment, str(path_a), str(path_b))
+
+        for output_path, size in ((output_small, "small"), (output_large, "large")):
+            build_pdf_report(
+                str(path_a), str(path_b), pages_a, pages_b, alignment, str(output_path), image_size=size,
+            )
+            assert output_path.exists()
+            doc = fitz.open(str(output_path))
+            try:
+                assert doc.page_count >= 2
+            finally:
+                doc.close()
+
+        print("OK: test_build_pdf_report_with_each_image_size_preset")
+    finally:
+        path_a.unlink(missing_ok=True)
+        path_b.unlink(missing_ok=True)
+        output_small.unlink(missing_ok=True)
+        output_large.unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     test_build_pdf_report_produces_valid_pdf_with_summary_title()
+    test_build_pdf_report_with_each_image_size_preset()

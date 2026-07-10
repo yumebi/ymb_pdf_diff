@@ -18,8 +18,27 @@ from .core import (
     draw_highlights,
     render_page,
 )
+from .report.image_size import DEFAULT_IMAGE_SIZE, resolve_long_edge_max_px
 
 SESSION_FORMAT_VERSION = 1
+_JPEG_QUALITY = 85  # 埋め込みJPEGの画質(#新機能11)。PNGよりはるかに小さく、見た目の劣化も目立たない
+
+
+def _encode_capture(image: Image.Image, max_dim: int) -> bytes:
+    """キャプチャ画像をimage_sizeに応じてサムネイル化し、JPEGバイト列にして返す。
+
+    format_versionは変えず、result.jsonのcapture_a/capture_b名だけ拡張子を.pngから.jpgへ変える
+    (#新機能11でPNGから変更)。読み込み側(capture_image)はbytesをPIL.Image.openに渡すだけで
+    フォーマットを判別するため、変更なしでそのまま読み込める。
+    """
+    thumb = image.copy()
+    if max(thumb.size) > max_dim:
+        thumb.thumbnail((max_dim, max_dim))
+    if thumb.mode != "RGB":
+        thumb = thumb.convert("RGB")
+    buf = io.BytesIO()
+    thumb.save(buf, format="JPEG", quality=_JPEG_QUALITY)
+    return buf.getvalue()
 
 
 @dataclass
@@ -52,9 +71,17 @@ def save_session(
     pages_b: List[List[PageLine]],
     alignment: AlignmentResult,
     dpi: int = 150,
+    threshold: int = 30,
+    image_size: str = DEFAULT_IMAGE_SIZE,
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> None:
-    """比較結果を自己完結のzip(.ymbdiff)に保存する。差分のあるページのみキャプチャ・テキスト差分を同梱する。"""
+    """比較結果を自己完結のzip(.ymbdiff)に保存する。差分のあるページのみキャプチャ・テキスト差分を同梱する。
+
+    thresholdは画像差分の感度(0-100、小さいほど敏感。GUIの表示設定と同じ値を渡せる)。
+    image_size(#新機能11、"small"/"medium"/"large")はキャプチャを埋め込む際の長辺の
+    最大ピクセル数を切り替える(GUIの表示設定と同じ値を渡せる)。
+    """
+    max_dim = resolve_long_edge_max_px(image_size)
     meta = {
         "format_version": SESSION_FORMAT_VERSION,
         "app_version": __version__,
@@ -85,28 +112,25 @@ def save_session(
                         {"kind": e.kind, "before": e.before, "after": e.after}
                         for e in diff_page_lines(pages_a[status.a_page], pages_b[status.b_page])
                     ]
-                    # 画像差分の感度(#新機能7)はGUI表示専用の設定のため、セッション保存でも
-                    # diff_page_pairのデフォルト値(threshold=30)を使う。
-                    regions = diff_page_pair(pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi).regions
+                    # 画像差分の感度(#新機能7)。呼び出し元(save_session)経由でGUIの設定値を受け取る。
+                    regions = diff_page_pair(
+                        pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi, threshold=threshold
+                    ).regions
 
                 if status.a_page is not None:
                     img_a = render_page(pdf_a_path, status.a_page, dpi=dpi)
                     if regions:
                         img_a = draw_highlights(img_a, regions, color="red")
-                    name = f"captures/{idx:03d}_a.png"
-                    buf = io.BytesIO()
-                    img_a.save(buf, format="PNG")
-                    zf.writestr(name, buf.getvalue())
+                    name = f"captures/{idx:03d}_a.jpg"
+                    zf.writestr(name, _encode_capture(img_a, max_dim))
                     entry["capture_a"] = name
 
                 if status.b_page is not None:
                     img_b = render_page(pdf_b_path, status.b_page, dpi=dpi)
                     if regions:
                         img_b = draw_highlights(img_b, regions, color="red")
-                    name = f"captures/{idx:03d}_b.png"
-                    buf = io.BytesIO()
-                    img_b.save(buf, format="PNG")
-                    zf.writestr(name, buf.getvalue())
+                    name = f"captures/{idx:03d}_b.jpg"
+                    zf.writestr(name, _encode_capture(img_b, max_dim))
                     entry["capture_b"] = name
 
             meta["page_statuses"].append(entry)

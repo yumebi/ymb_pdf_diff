@@ -17,6 +17,7 @@ from ..core import (
     draw_highlights,
     render_page,
 )
+from .image_size import DEFAULT_IMAGE_SIZE, resolve_excel_thumb_max_size
 
 _INVALID_SHEET_CHARS = re.compile(r"[\\/*?:\[\]]")
 
@@ -34,7 +35,7 @@ _FONT_INSERT = Font(color="006100")
 _FILL_REPLACE = PatternFill("solid", fgColor="FFEB9C")
 _FONT_REPLACE = Font(color="9C6500")
 _HEADER_FONT = Font(bold=True)
-_THUMB_MAX_SIZE = (800, 1100)
+_JPEG_QUALITY = 85  # 埋め込みJPEGの画質(#新機能11)。PNGよりはるかに小さく、見た目の劣化も目立たない
 
 
 def _safe_sheet_name(name: str, used: Set[str]) -> str:
@@ -68,21 +69,24 @@ def _diff_count_for(status: PageStatus, pages_a: List[List[PageLine]], pages_b: 
     return 0
 
 
-def _embed_thumbnail(ws: Worksheet, image, anchor: str) -> None:
+def _embed_thumbnail(ws: Worksheet, image, anchor: str, thumb_max_size) -> None:
     """PIL Imageをサムネイル化してExcelに埋め込む。
 
     openpyxlのImage._data()は`fp`(元ファイルのファイルポインタ)を読みに行く実装のため、
     PIL.Image.new/copy等で生成した(ファイルから開いていない)画像はそのまま渡すと
-    `AttributeError: 'Image' object has no attribute 'fp'`になる。PNGとしてメモリに
-    一度書き出し、fp/formatを明示的に持たせてから渡す。
+    `AttributeError: 'Image' object has no attribute 'fp'`になる。JPEGとしてメモリに
+    一度書き出し(#新機能11でPNGから変更、同じサイズでファイルがはるかに小さくなる)、
+    fp/formatを明示的に持たせてから渡す。openpyxlはfp/formatを見るだけなのでJPEGでも同様に動作する。
     """
     thumb = image.copy()
-    thumb.thumbnail(_THUMB_MAX_SIZE)
+    thumb.thumbnail(thumb_max_size)
+    if thumb.mode != "RGB":
+        thumb = thumb.convert("RGB")
     buf = io.BytesIO()
-    thumb.save(buf, format="PNG")
+    thumb.save(buf, format="JPEG", quality=_JPEG_QUALITY)
     buf.seek(0)
     thumb.fp = buf
-    thumb.format = "PNG"
+    thumb.format = "JPEG"
     ws.add_image(XLImage(thumb), anchor)
 
 
@@ -116,16 +120,16 @@ def _write_text_diff_table(ws: Worksheet, start_row: int, entries) -> int:
 
 def _build_detail_sheet_changed(
     wb: Workbook, sheet_name: str, status: PageStatus, pdf_a_path: str, pdf_b_path: str,
-    pages_a: List[List[PageLine]], pages_b: List[List[PageLine]], dpi: int,
+    pages_a: List[List[PageLine]], pages_b: List[List[PageLine]], dpi: int, threshold: int,
+    thumb_max_size,
 ) -> Worksheet:
     ws = wb.create_sheet(sheet_name)
     ws.cell(row=1, column=1, value=f"ページ A{status.a_page + 1} / B{status.b_page + 1} 比較").font = Font(bold=True, size=14)
     ws.cell(row=2, column=1, value="サマリーへ戻る").hyperlink = "#'サマリー'!A1"
     ws.cell(row=2, column=1).font = Font(color="0563C1", underline="single")
 
-    # 画像差分の感度(#新機能7)はGUI表示専用の設定のため、Excelレポートではdiff_page_pairの
-    # デフォルト値(threshold=30)を使う(GUI設定への依存を持ち込まないための意図的な選択)。
-    img_result = diff_page_pair(pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi)
+    # 画像差分の感度(#新機能7)。呼び出し元(build_excel_report)経由でGUIの設定値を受け取る。
+    img_result = diff_page_pair(pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi, threshold=threshold)
     img_a = render_page(pdf_a_path, status.a_page, dpi=dpi)
     img_b = render_page(pdf_b_path, status.b_page, dpi=dpi)
     img_a = draw_highlights(img_a, img_result.regions, color="red")
@@ -133,8 +137,8 @@ def _build_detail_sheet_changed(
 
     ws.cell(row=4, column=2, value="変更前(A)").font = _HEADER_FONT
     ws.cell(row=4, column=20, value="変更後(B)").font = _HEADER_FONT
-    _embed_thumbnail(ws, img_a, "B5")
-    _embed_thumbnail(ws, img_b, "T5")
+    _embed_thumbnail(ws, img_a, "B5", thumb_max_size)
+    _embed_thumbnail(ws, img_b, "T5", thumb_max_size)
 
     entries = diff_page_lines(pages_a[status.a_page], pages_b[status.b_page])
     if not entries and status.visual_only:
@@ -146,6 +150,7 @@ def _build_detail_sheet_changed(
 
 def _build_detail_sheet_single_side(
     wb: Workbook, sheet_name: str, status: PageStatus, pdf_path: str, page_index: int, side_label: str, dpi: int,
+    thumb_max_size,
 ) -> Worksheet:
     ws = wb.create_sheet(sheet_name)
     ws.cell(row=1, column=1, value=f"ページ {side_label}{page_index + 1}({_STATUS_LABEL[status.status]})").font = Font(bold=True, size=14)
@@ -154,7 +159,7 @@ def _build_detail_sheet_single_side(
 
     img = render_page(pdf_path, page_index, dpi=dpi)
     ws.cell(row=4, column=2, value=f"{side_label}側のみに存在するページ").font = _HEADER_FONT
-    _embed_thumbnail(ws, img, "B5")
+    _embed_thumbnail(ws, img, "B5", thumb_max_size)
     return ws
 
 
@@ -166,8 +171,15 @@ def build_excel_report(
     alignment: AlignmentResult,
     output_path: str,
     dpi: int = 150,
+    threshold: int = 30,
+    image_size: str = DEFAULT_IMAGE_SIZE,
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> None:
+    """比較結果をExcelレポートとして書き出す。
+
+    image_size(#新機能11、"small"/"medium"/"large")でサムネイルの上限サイズを切り替えられる。
+    """
+    thumb_max_size = resolve_excel_thumb_max_size(image_size)
     wb = Workbook()
     summary_ws = wb.active
     summary_ws.title = "サマリー"
@@ -218,11 +230,13 @@ def build_excel_report(
             link_cell.font = Font(color="0563C1", underline="single")
 
             if status.status == "changed" and status.a_page is not None and status.b_page is not None:
-                _build_detail_sheet_changed(wb, sheet_name, status, pdf_a_path, pdf_b_path, pages_a, pages_b, dpi)
+                _build_detail_sheet_changed(
+                    wb, sheet_name, status, pdf_a_path, pdf_b_path, pages_a, pages_b, dpi, threshold, thumb_max_size
+                )
             elif status.status == "inserted" and status.b_page is not None:
-                _build_detail_sheet_single_side(wb, sheet_name, status, pdf_b_path, status.b_page, "B", dpi)
+                _build_detail_sheet_single_side(wb, sheet_name, status, pdf_b_path, status.b_page, "B", dpi, thumb_max_size)
             elif status.status == "deleted" and status.a_page is not None:
-                _build_detail_sheet_single_side(wb, sheet_name, status, pdf_a_path, status.a_page, "A", dpi)
+                _build_detail_sheet_single_side(wb, sheet_name, status, pdf_a_path, status.a_page, "A", dpi, thumb_max_size)
         row += 1
 
         if progress_callback:

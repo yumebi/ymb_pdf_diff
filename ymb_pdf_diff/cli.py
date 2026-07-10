@@ -12,10 +12,10 @@ from .core import (
     load_pdf_pages,
     parse_page_range,
 )
-from .report import build_excel_report, build_pdf_report
+from .report import DEFAULT_IMAGE_SIZE, IMAGE_SIZE_CHOICES, build_excel_report, build_pdf_report
 
 
-def _print_page_statuses(pdf_a: str, pdf_b: str, pages_a, pages_b, result) -> None:
+def _print_page_statuses(pdf_a: str, pdf_b: str, pages_a, pages_b, result, threshold: int = 30) -> None:
     for status in result.page_statuses:
         a_disp = status.a_page + 1 if status.a_page is not None else "-"
         b_disp = status.b_page + 1 if status.b_page is not None else "-"
@@ -28,7 +28,7 @@ def _print_page_statuses(pdf_a: str, pdf_b: str, pages_a, pages_b, result) -> No
             for entry in entries:
                 print(f"    {entry.kind}: -{entry.before} +{entry.after}")
 
-            img_result = diff_page_pair(pdf_a, status.a_page, pdf_b, status.b_page)
+            img_result = diff_page_pair(pdf_a, status.a_page, pdf_b, status.b_page, threshold=threshold)
             print(f"    image_diff: ratio={img_result.diff_ratio:.3%} regions={len(img_result.regions)}")
 
 
@@ -44,19 +44,28 @@ def _run_single(args: argparse.Namespace) -> None:
     else:
         result = align_documents(pages_a, pages_b)
 
-    detect_visual_only_changes(result, args.pdf_a, args.pdf_b)
-    _print_page_statuses(args.pdf_a, args.pdf_b, pages_a, pages_b, result)
+    detect_visual_only_changes(result, args.pdf_a, args.pdf_b, threshold=args.threshold)
+    _print_page_statuses(args.pdf_a, args.pdf_b, pages_a, pages_b, result, threshold=args.threshold)
 
     if args.excel:
-        build_excel_report(args.pdf_a, args.pdf_b, pages_a, pages_b, result, args.excel)
+        build_excel_report(
+            args.pdf_a, args.pdf_b, pages_a, pages_b, result, args.excel,
+            threshold=args.threshold, image_size=args.image_size,
+        )
         print(f"Excelレポート出力: {args.excel}")
 
     if args.pdf:
-        build_pdf_report(args.pdf_a, args.pdf_b, pages_a, pages_b, result, args.pdf)
+        build_pdf_report(
+            args.pdf_a, args.pdf_b, pages_a, pages_b, result, args.pdf,
+            threshold=args.threshold, image_size=args.image_size,
+        )
         print(f"PDFレポート出力: {args.pdf}")
 
 
-def _run_batch(dir_a: str, dir_b: str, out_dir: str, excel_only: bool = False) -> None:
+def _run_batch(
+    dir_a: str, dir_b: str, out_dir: str, excel_only: bool = False, threshold: int = 30,
+    image_size: str = DEFAULT_IMAGE_SIZE,
+) -> None:
     """フォルダ一括比較モード(#新機能9)。
 
     dir_a/dir_bそれぞれ直下(非再帰)にある同名の*.pdfペアだけを比較する。
@@ -82,17 +91,23 @@ def _run_batch(dir_a: str, dir_b: str, out_dir: str, excel_only: bool = False) -
         pages_a = load_pdf_pages(pdf_a_path)
         pages_b = load_pdf_pages(pdf_b_path)
         alignment = align_documents(pages_a, pages_b)
-        detect_visual_only_changes(alignment, pdf_a_path, pdf_b_path)
+        detect_visual_only_changes(alignment, pdf_a_path, pdf_b_path, threshold=threshold)
         diff_count = len(alignment.changed_pages())
 
         stem = Path(name).stem
         excel_path = out_path / f"{stem}_diff.xlsx"
-        build_excel_report(pdf_a_path, pdf_b_path, pages_a, pages_b, alignment, str(excel_path))
+        build_excel_report(
+            pdf_a_path, pdf_b_path, pages_a, pages_b, alignment, str(excel_path),
+            threshold=threshold, image_size=image_size,
+        )
 
         pdf_report_path = ""
         if not excel_only:
             pdf_report_path_obj = out_path / f"{stem}_diff.pdf"
-            build_pdf_report(pdf_a_path, pdf_b_path, pages_a, pages_b, alignment, str(pdf_report_path_obj))
+            build_pdf_report(
+                pdf_a_path, pdf_b_path, pages_a, pages_b, alignment, str(pdf_report_path_obj),
+                threshold=threshold, image_size=image_size,
+            )
             pdf_report_path = str(pdf_report_path_obj)
 
         rows.append((name, len(pages_a), len(pages_b), diff_count, str(excel_path), pdf_report_path))
@@ -140,12 +155,28 @@ def main() -> None:
         action="store_true",
         help="バッチモードでExcelレポートのみ出力する(PDFレポートを省略する)",
     )
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=30,
+        help="画像差分の感度(0-100、小さいほど敏感。既定値30。単体/バッチモード共通)",
+    )
+    parser.add_argument(
+        "--image-size",
+        dest="image_size",
+        choices=IMAGE_SIZE_CHOICES,
+        default=DEFAULT_IMAGE_SIZE,
+        help="レポートに埋め込む画像のサイズ(#新機能11。small/medium/large、既定値medium。単体/バッチモード共通)",
+    )
     args = parser.parse_args()
 
     if args.batch:
         if not args.out:
             parser.error("--batchモードでは--outの指定が必須です。")
-        _run_batch(args.batch[0], args.batch[1], args.out, excel_only=args.excel_only)
+        _run_batch(
+            args.batch[0], args.batch[1], args.out, excel_only=args.excel_only,
+            threshold=args.threshold, image_size=args.image_size,
+        )
         return
 
     if not args.pdf_a or not args.pdf_b:

@@ -25,6 +25,7 @@
 - **最近使ったペア履歴**: メニューから直近の比較ペアをワンクリックで再比較
 - **バックグラウンド比較**: 大きいPDFでもUIが固まらない、途中キャンセル可能
 - **配色カスタマイズ**: 追加/削除/変更の色を自由に変更、設定は保存される
+- **レポート画像サイズ選択**: 表示設定で埋め込み画像サイズを小/中/大の3段階から選択可能(出力ファイルサイズと画質のトレードオフを調整)
 
 ### 出力・連携
 
@@ -57,6 +58,9 @@ CLIで動作確認する場合:
 # 2ファイル比較(Excel/PDFレポート出力、ページ範囲指定も可能)
 python -m ymb_pdf_diff.cli sample_A.pdf sample_B.pdf --excel diff_report.xlsx --pdf diff_report.pdf
 python -m ymb_pdf_diff.cli sample_A.pdf sample_B.pdf --range-a 1-5,8 --range-b 1-6
+
+# レポート埋め込み画像のサイズをsmall/medium/large(既定medium)から指定
+python -m ymb_pdf_diff.cli sample_A.pdf sample_B.pdf --pdf diff_report.pdf --image-size small
 
 # フォルダ一括比較(同名PDFの全ペアを比較してレポート一括出力)
 python -m ymb_pdf_diff.cli --batch folder_A folder_B --out reports/
@@ -117,6 +121,16 @@ GUI関連テストは画面なし環境でも動くよう `QT_QPA_PLATFORM=offsc
 > **インストール時に警告が出る場合がある。** コード署名を行っていないため、Windowsでは「Windows によって PC が保護されました」(SmartScreen)、Macでは「開発元が未確認のため開けません」(Gatekeeper)という警告が表示される可能性がある。問題のあるファイルではないので、以下の手順で進めること。
 > - **Windows**: 警告画面で「詳細情報」→「実行」をクリック
 > - **Mac**: ファイルを右クリック→「開く」を選択(または システム設定 → プライバシーとセキュリティ で許可)
+
+### Macでのご利用時の注意(OCR)
+
+Windows版はTesseract-OCR本体(日本語+英語)を同梱しているため追加インストール不要だが、Mac版は同梱していない。
+テキストPDF同士の比較はMacでもそのまま利用できるが、**スキャンPDF(画像のみのページ)のOCR読み取り**を使うには、
+事前に以下をインストールする必要がある。
+
+```bash
+brew install tesseract tesseract-lang   # tesseract-langで日本語(jpn)を含む全言語データが入る
+```
 
 ## ライセンス
 

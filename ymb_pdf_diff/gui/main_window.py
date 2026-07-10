@@ -47,7 +47,7 @@ from ..session import LoadedSession, load_session, save_session
 from ..update_check import check_for_update
 from .color_settings_dialog import ColorSettingsDialog
 from .diff_colors import DiffColors
-from .diff_settings import get_threshold
+from .diff_settings import get_image_size, get_threshold
 from .image_view import ImageView
 from .page_range_dialog import PageRangeDialog
 from .window_state import save_window_geometry, restore_window_geometry
@@ -865,7 +865,7 @@ class MainWindow(QMainWindow):
         try:
             build_excel_report(
                 self.pdf_a_path, self.pdf_b_path, self.pages_a, self.pages_b, self.alignment, path,
-                progress_callback=progress,
+                threshold=get_threshold(), image_size=get_image_size(), progress_callback=progress,
             )
         except Exception as exc:  # noqa: BLE001 - ユーザーに失敗内容を見せるため捕捉
             progress_dialog.close()
@@ -891,7 +891,7 @@ class MainWindow(QMainWindow):
         try:
             build_pdf_report(
                 self.pdf_a_path, self.pdf_b_path, self.pages_a, self.pages_b, self.alignment, path,
-                progress_callback=progress,
+                threshold=get_threshold(), image_size=get_image_size(), progress_callback=progress,
             )
         except Exception as exc:  # noqa: BLE001 - ユーザーに失敗内容を見せるため捕捉
             progress_dialog.close()
@@ -917,7 +917,7 @@ class MainWindow(QMainWindow):
         try:
             save_session(
                 path, self.pdf_a_path, self.pdf_b_path, self.pages_a, self.pages_b, self.alignment,
-                progress_callback=progress,
+                threshold=get_threshold(), image_size=get_image_size(), progress_callback=progress,
             )
         except Exception as exc:  # noqa: BLE001 - ユーザーに失敗内容を見せるため捕捉
             progress_dialog.close()

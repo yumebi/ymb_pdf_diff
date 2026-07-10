@@ -2,6 +2,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -13,7 +14,14 @@ from PySide6.QtWidgets import (
 )
 
 from .diff_colors import LABELS, DiffColors
-from .diff_settings import get_threshold, set_threshold
+from .diff_settings import get_image_size, get_threshold, set_image_size, set_threshold
+
+# レポート画像サイズ(#新機能11): プリセットキーと表示名の対応
+_IMAGE_SIZE_LABELS = {
+    "small": "小(コンパクト)",
+    "medium": "中(標準)",
+    "large": "大(高精細)",
+}
 
 
 def _contrasting_text_color(hex_color: str) -> str:
@@ -69,6 +77,18 @@ class ColorSettingsDialog(QDialog):
         self._threshold_slider.valueChanged.connect(self._on_threshold_changed)
         layout.addLayout(threshold_row)
 
+        # レポート画像サイズ(#新機能11): PDF/Excelレポート・セッション保存の埋め込み画像サイズ
+        image_size_row = QHBoxLayout()
+        image_size_row.addWidget(QLabel("レポート画像サイズ"))
+        self._image_size_combo = QComboBox()
+        for key, label in _IMAGE_SIZE_LABELS.items():
+            self._image_size_combo.addItem(label, key)
+        current_index = self._image_size_combo.findData(get_image_size())
+        self._image_size_combo.setCurrentIndex(max(current_index, 0))
+        self._image_size_combo.currentIndexChanged.connect(self._on_image_size_changed)
+        image_size_row.addWidget(self._image_size_combo)
+        layout.addLayout(image_size_row)
+
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         button_box.accepted.connect(self.accept)
         layout.addWidget(button_box)
@@ -90,3 +110,8 @@ class ColorSettingsDialog(QDialog):
     def _on_threshold_changed(self, value: int) -> None:
         self._threshold_value_label.setText(str(value))
         set_threshold(value)
+
+    def _on_image_size_changed(self, index: int) -> None:
+        key = self._image_size_combo.itemData(index)
+        if key:
+            set_image_size(key)
