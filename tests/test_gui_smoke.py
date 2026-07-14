@@ -10,9 +10,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import fitz
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QSplitter
 
 from ymb_pdf_diff.gui import MainWindow
+from ymb_pdf_diff.gui.main_window import _SELECTION_MARKER
 
 
 def _make_sample_pdfs(tmp_dir: Path):
@@ -39,10 +41,31 @@ def test_compare_and_render_smoke():
         window.pdf_a_path = str(path_a)
         window.pdf_b_path = str(path_b)
 
+        # ピクセルマップの拡大縮小がスムーズ変換になっているか(#UI改善: ズーム時のジャギー対策)
+        assert window.view_a._pixmap_item.transformationMode() == Qt.TransformationMode.SmoothTransformation
+        assert window.view_b._pixmap_item.transformationMode() == Qt.TransformationMode.SmoothTransformation
+
+        # 下部テキスト差分パネルがドラッグでリサイズ可能になっているか(#UI改善: 高さ固定の解除)
+        central = window.centralWidget()
+        assert isinstance(central, QSplitter)
+        assert central.orientation() == Qt.Orientation.Vertical
+        assert window.text_diff_view.maximumHeight() > 220
+
         window._run_compare(sync=True)
         assert window.alignment is not None
         assert window.diff_list.count() == len(window.alignment.page_statuses)
         assert window.btn_export.isEnabled()
+
+        # 選択行マーカー(#UI改善: 選択行の視認性向上): 行を切り替えるたびに
+        # マーカーが1件だけ付与され、currentRowと一致していることを確認する
+        def _marked_rows():
+            return [i for i in range(window.diff_list.count()) if window.diff_list.item(i).text().startswith(_SELECTION_MARKER)]
+
+        for row in range(window.diff_list.count()):
+            window.diff_list.setCurrentRow(row)
+            marked = _marked_rows()
+            assert marked == [row], f"row={row} marked={marked}"
+            assert window._current_marker_row == row
 
         # 前の差分/次の差分ジャンプ(#新機能2): 差分ありなのでボタンが有効化され、
         # 「次の差分」で最初のchanged行へ移動できる

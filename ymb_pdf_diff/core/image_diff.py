@@ -2,7 +2,7 @@ from typing import List, Tuple
 
 import fitz  # PyMuPDF
 import numpy as np
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from .models import ImageDiffResult
 
@@ -54,12 +54,36 @@ def _extract_regions(mask: np.ndarray, row_gap: int) -> List[Tuple[int, int, int
     return regions
 
 
-def diff_images(img_a: Image.Image, img_b: Image.Image, threshold: int = 30, row_gap: int = 6) -> ImageDiffResult:
+def _blur_for_comparison(img: Image.Image, radius: int) -> Image.Image:
+    """位置ズレ許容(#新機能12)のため、比較専用にガウスぼかしを掛けたコピーを返す。
+
+    radius<=0の場合は無加工(元画像そのまま)。ぼかすことでアンチエイリアスの違いや
+    数ピクセル程度の一貫した位置ズレが吸収され、実際のレイアウト変更・内容差分のような
+    ぼかし半径よりはるかに大きい差分だけが残るようになる。呼び出し元は返り値を書き換え
+    ないため、radius<=0のときはコピーを作らずそのまま返す。
+    """
+    if radius <= 0:
+        return img
+    return img.filter(ImageFilter.GaussianBlur(radius))
+
+
+def diff_images(
+    img_a: Image.Image,
+    img_b: Image.Image,
+    threshold: int = 30,
+    row_gap: int = 6,
+    shift_tolerance: int = 0,
+) -> ImageDiffResult:
     size_a = img_a.size
     size_b = img_b.size
     canvas_a, canvas_b = pad_to_same_size(img_a, img_b)
 
-    diff = ImageChops.difference(canvas_a, canvas_b).convert("L")
+    # 位置ズレ許容(#新機能12): 実際の差分ピクセル判定にはぼかし後の画像を使う。
+    # size_a/size_b等のメタデータは元画像基準のまま変えない(ぼかしは比較用のみ)。
+    compare_a = _blur_for_comparison(canvas_a, shift_tolerance)
+    compare_b = _blur_for_comparison(canvas_b, shift_tolerance)
+
+    diff = ImageChops.difference(compare_a, compare_b).convert("L")
     mask = np.array(diff) > threshold
 
     diff_pixels = int(mask.sum())
@@ -76,11 +100,18 @@ def diff_images(img_a: Image.Image, img_b: Image.Image, threshold: int = 30, row
 
 
 def diff_page_pair(
-    pdf_a: str, a_page_index: int, pdf_b: str, b_page_index: int, dpi: int = 150, threshold: int = 30, row_gap: int = 6
+    pdf_a: str,
+    a_page_index: int,
+    pdf_b: str,
+    b_page_index: int,
+    dpi: int = 150,
+    threshold: int = 30,
+    row_gap: int = 6,
+    shift_tolerance: int = 0,
 ) -> ImageDiffResult:
     img_a = render_page(pdf_a, a_page_index, dpi=dpi)
     img_b = render_page(pdf_b, b_page_index, dpi=dpi)
-    return diff_images(img_a, img_b, threshold=threshold, row_gap=row_gap)
+    return diff_images(img_a, img_b, threshold=threshold, row_gap=row_gap, shift_tolerance=shift_tolerance)
 
 
 def overlay_images(img_a: Image.Image, img_b: Image.Image) -> Image.Image:

@@ -47,7 +47,7 @@ from ..session import LoadedSession, load_session, save_session
 from ..update_check import check_for_update
 from .color_settings_dialog import ColorSettingsDialog
 from .diff_colors import DiffColors
-from .diff_settings import get_image_size, get_threshold
+from .diff_settings import get_image_size, get_shift_tolerance, get_threshold
 from .image_view import ImageView
 from .page_range_dialog import PageRangeDialog
 from .window_state import save_window_geometry, restore_window_geometry
@@ -66,6 +66,9 @@ _STATUS_LABEL = {
 _STATUS_TO_COLOR_KEY = {"changed": "changed", "inserted": "inserted", "deleted": "deleted"}
 _TEXT_KIND_LABEL = {"replace": "変更", "insert": "追加", "delete": "削除"}
 _KIND_TO_COLOR_KEY = {"replace": "changed", "insert": "inserted", "delete": "deleted"}
+# 現在選択中の行を示すマーカー。差分ステータスごとの背景/文字色がQtデフォルトの選択ハイライトと
+# 衝突して見えにくくなる問題への対策として、テーマに依存せず常に見える目印を行頭に付ける。
+_SELECTION_MARKER = "▶ "
 
 _BUTTON_STYLE = """
 QPushButton {
@@ -91,6 +94,9 @@ QPushButton:disabled {
     background-color: #E0E0E0;
     border-color: #C0C0C0;
     color: #909090;
+}
+QListWidget::item:selected {
+    border: 2px solid #2E5FA0;
 }
 """
 
@@ -121,6 +127,7 @@ def _do_compare_work(
     progress_cb: Callable[[str, int], None],
     is_cancelled: Callable[[], bool],
     threshold: int = 30,
+    shift_tolerance: int = 0,
     range_a: Optional[str] = None,
     range_b: Optional[str] = None,
 ) -> Tuple[List[List[PageLine]], List[List[PageLine]], AlignmentResult]:
@@ -131,6 +138,8 @@ def _do_compare_work(
     progress_cb(label, value) は進捗更新のたびに呼ばれる(value は0-100)。
     is_cancelled() がTrueを返した時点で_CompareCancelledを送出して処理を中断する。
     threshold(#新機能7)は画像差分の感度(0-100、小さいほど敏感)。表示設定ダイアログの
+    値がGUI側から渡される。
+    shift_tolerance(#新機能12)は位置ズレ許容(px、0=無効)。同じく表示設定ダイアログの
     値がGUI側から渡される。
     range_a/range_b(#新機能8)は「1-5,8」形式のページ範囲指定。Noneまたは空文字は
     該当ファイルの全ページを対象にする。書式・範囲外エラーはValueErrorとして送出される。
@@ -170,7 +179,12 @@ def _do_compare_work(
         )
 
     detect_visual_only_changes(
-        alignment, pdf_a_path, pdf_b_path, threshold=threshold, progress_callback=image_progress
+        alignment,
+        pdf_a_path,
+        pdf_b_path,
+        threshold=threshold,
+        shift_tolerance=shift_tolerance,
+        progress_callback=image_progress,
     )
     if is_cancelled():
         raise _CompareCancelled()
@@ -191,6 +205,7 @@ class _CompareThread(QThread):
         pdf_a_path: str,
         pdf_b_path: str,
         threshold: int = 30,
+        shift_tolerance: int = 0,
         range_a: Optional[str] = None,
         range_b: Optional[str] = None,
         parent=None,
@@ -199,6 +214,7 @@ class _CompareThread(QThread):
         self._pdf_a_path = pdf_a_path
         self._pdf_b_path = pdf_b_path
         self._threshold = threshold
+        self._shift_tolerance = shift_tolerance
         self._range_a = range_a
         self._range_b = range_b
         self._cancel_requested = False
@@ -214,6 +230,7 @@ class _CompareThread(QThread):
                 lambda text, value: self.progress.emit(text, value),
                 lambda: self._cancel_requested,
                 threshold=self._threshold,
+                shift_tolerance=self._shift_tolerance,
                 range_a=self._range_a,
                 range_b=self._range_b,
             )
@@ -255,6 +272,7 @@ class MainWindow(QMainWindow):
         self.overlay_mode = False
         self._compare_thread: Optional[_CompareThread] = None
         self._compare_progress: Optional[QProgressDialog] = None
+        self._current_marker_row: Optional[int] = None
 
         self._build_menu()
         self._build_ui()
@@ -362,8 +380,9 @@ class MainWindow(QMainWindow):
 
         self.summary_label = QLabel("PDFファイルA・Bを選択して「比較実行」を押してください。")
 
-        central = QWidget()
-        layout = QVBoxLayout(central)
+        top_container = QWidget()
+        layout = QVBoxLayout(top_container)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.summary_label)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -372,6 +391,7 @@ class MainWindow(QMainWindow):
         self.diff_list.setMinimumWidth(220)
         self.diff_list.setMaximumWidth(320)
         self.diff_list.currentRowChanged.connect(self._on_select_row)
+        self.diff_list.currentRowChanged.connect(self._update_selection_marker)
         splitter.addWidget(self.diff_list)
 
         self.view_a = ImageView()
@@ -407,10 +427,16 @@ class MainWindow(QMainWindow):
 
         self.text_diff_view = QTextEdit()
         self.text_diff_view.setReadOnly(True)
-        self.text_diff_view.setMaximumHeight(220)
-        layout.addWidget(self.text_diff_view)
+        # 以前は setMaximumHeight(220) で高さを固定していたが、ユーザーがドラッグして
+        # 広げられるよう縦方向のQSplitterに変更する。最小高さのみ確保しておく。
+        self.text_diff_view.setMinimumHeight(80)
 
-        self.setCentralWidget(central)
+        vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        vertical_splitter.addWidget(top_container)
+        vertical_splitter.addWidget(self.text_diff_view)
+        vertical_splitter.setSizes([650, 220])
+
+        self.setCentralWidget(vertical_splitter)
         self.statusBar().showMessage("準備完了")
 
         self.update_label = QLabel("")
@@ -447,13 +473,14 @@ class MainWindow(QMainWindow):
 
     def _open_color_settings(self) -> None:
         previous_threshold = get_threshold()
+        previous_shift_tolerance = get_shift_tolerance()
         dialog = ColorSettingsDialog(self.diff_colors, self)
         if dialog.exec():
             row = self.diff_list.currentRow()
             self._populate_diff_list()
             if row >= 0:
                 self.diff_list.setCurrentRow(row)
-            if get_threshold() != previous_threshold:
+            if get_threshold() != previous_threshold or get_shift_tolerance() != previous_shift_tolerance:
                 self.statusBar().showMessage("感度を変更しました。再度「比較実行」を押すと反映されます")
 
     def _open_page_range_dialog(self) -> None:
@@ -595,15 +622,16 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
 
         threshold = get_threshold()
+        shift_tolerance = get_shift_tolerance()
 
         if sync:
-            self._run_compare_sync(progress_dialog, threshold)
+            self._run_compare_sync(progress_dialog, threshold, shift_tolerance)
             return
 
         progress_dialog.canceled.connect(self._on_compare_cancel_requested)
 
         thread = _CompareThread(
-            self.pdf_a_path, self.pdf_b_path, threshold, self.page_range_a, self.page_range_b, self
+            self.pdf_a_path, self.pdf_b_path, threshold, shift_tolerance, self.page_range_a, self.page_range_b, self
         )
         thread.progress.connect(self._on_compare_progress)
         thread.finished_ok.connect(self._on_compare_finished)
@@ -613,7 +641,7 @@ class MainWindow(QMainWindow):
         self._compare_thread = thread
         thread.start()
 
-    def _run_compare_sync(self, progress_dialog: QProgressDialog, threshold: int = 30) -> None:
+    def _run_compare_sync(self, progress_dialog: QProgressDialog, threshold: int = 30, shift_tolerance: int = 0) -> None:
         def progress_cb(text: str, value: int) -> None:
             progress_dialog.setLabelText(text)
             progress_dialog.setValue(value)
@@ -627,6 +655,7 @@ class MainWindow(QMainWindow):
                 progress_cb,
                 lambda: False,
                 threshold=threshold,
+                shift_tolerance=shift_tolerance,
                 range_a=self.page_range_a,
                 range_b=self.page_range_b,
             )
@@ -711,6 +740,9 @@ class MainWindow(QMainWindow):
 
     def _populate_diff_list(self) -> None:
         self.diff_list.clear()
+        # clear()で全アイテムが消えるため、以前の選択マーカー位置の記憶も無効化しておく
+        # (再描画後にsetCurrentRowが呼ばれた際、currentRowChangedシグナル経由で再付与される)。
+        self._current_marker_row = None
         if self.alignment is None:
             return
         for status in self.alignment.page_statuses:
@@ -725,6 +757,24 @@ class MainWindow(QMainWindow):
                 item.setBackground(QColor(self.diff_colors.get(f"{color_key}_bg")))
                 item.setForeground(QColor(self.diff_colors.get(f"{color_key}_fg")))
             self.diff_list.addItem(item)
+
+    def _update_selection_marker(self, row: int) -> None:
+        """現在選択中の行の先頭に"▶ "マーカーを付け、以前の行からは取り除く。
+
+        差分ステータスごとのsetBackground/setForegroundがQtデフォルトの選択ハイライトと
+        衝突して見えにくくなる問題への対策(#UI改善)。キーボード操作や前後の差分ジャンプ
+        ボタンでもマウスクリックなしに選択行が変わるため、常時見える目印として機能させる。
+        """
+        if self._current_marker_row is not None:
+            old_item = self.diff_list.item(self._current_marker_row)
+            if old_item is not None and old_item.text().startswith(_SELECTION_MARKER):
+                old_item.setText(old_item.text()[len(_SELECTION_MARKER):])
+            self._current_marker_row = None
+        if 0 <= row < self.diff_list.count():
+            item = self.diff_list.item(row)
+            if item is not None:
+                item.setText(_SELECTION_MARKER + item.text())
+                self._current_marker_row = row
 
     def _on_select_row(self, row: int) -> None:
         if self.alignment is None or row < 0 or row >= len(self.alignment.page_statuses):
@@ -755,7 +805,12 @@ class MainWindow(QMainWindow):
         regions: list = []
         if status.status == "changed" and both_pages:
             img_result = diff_page_pair(
-                self.pdf_a_path, status.a_page, self.pdf_b_path, status.b_page, threshold=get_threshold()
+                self.pdf_a_path,
+                status.a_page,
+                self.pdf_b_path,
+                status.b_page,
+                threshold=get_threshold(),
+                shift_tolerance=get_shift_tolerance(),
             )
             regions = img_result.regions
 
@@ -865,7 +920,8 @@ class MainWindow(QMainWindow):
         try:
             build_excel_report(
                 self.pdf_a_path, self.pdf_b_path, self.pages_a, self.pages_b, self.alignment, path,
-                threshold=get_threshold(), image_size=get_image_size(), progress_callback=progress,
+                threshold=get_threshold(), shift_tolerance=get_shift_tolerance(), image_size=get_image_size(),
+                progress_callback=progress,
             )
         except Exception as exc:  # noqa: BLE001 - ユーザーに失敗内容を見せるため捕捉
             progress_dialog.close()
@@ -891,7 +947,8 @@ class MainWindow(QMainWindow):
         try:
             build_pdf_report(
                 self.pdf_a_path, self.pdf_b_path, self.pages_a, self.pages_b, self.alignment, path,
-                threshold=get_threshold(), image_size=get_image_size(), progress_callback=progress,
+                threshold=get_threshold(), shift_tolerance=get_shift_tolerance(), image_size=get_image_size(),
+                progress_callback=progress,
             )
         except Exception as exc:  # noqa: BLE001 - ユーザーに失敗内容を見せるため捕捉
             progress_dialog.close()
@@ -917,7 +974,8 @@ class MainWindow(QMainWindow):
         try:
             save_session(
                 path, self.pdf_a_path, self.pdf_b_path, self.pages_a, self.pages_b, self.alignment,
-                threshold=get_threshold(), image_size=get_image_size(), progress_callback=progress,
+                threshold=get_threshold(), shift_tolerance=get_shift_tolerance(), image_size=get_image_size(),
+                progress_callback=progress,
             )
         except Exception as exc:  # noqa: BLE001 - ユーザーに失敗内容を見せるため捕捉
             progress_dialog.close()

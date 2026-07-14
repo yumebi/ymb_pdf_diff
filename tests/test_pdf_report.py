@@ -95,6 +95,44 @@ def test_build_pdf_report_with_each_image_size_preset():
         output_large.unlink(missing_ok=True)
 
 
+def test_build_pdf_report_embeds_text_diff_content():
+    """#報告対応: PDFレポートにも(Excelレポート同様)行単位のテキスト差分が埋め込まれることを確認する。
+
+    変更前後で実際に異なるテキストを持つページペアを用意し、出力PDFのいずれかのページの
+    get_text()に、その差分に由来する文字列が含まれることを検証する(キャプチャ画像だけでなく、
+    テキスト差分そのものが描画されていることの証拠)。
+    """
+    tmp_dir = Path(__file__).resolve().parent.parent
+    path_a, path_b = _make_sample_pdfs(tmp_dir)
+    output_path = tmp_dir / "pdf_report_textdiff_output.pdf"
+    try:
+        pages_a = load_pdf_pages(str(path_a))
+        pages_b = load_pdf_pages(str(path_b))
+        alignment = align_documents(pages_a, pages_b)
+        detect_visual_only_changes(alignment, str(path_a), str(path_b))
+
+        build_pdf_report(str(path_a), str(path_b), pages_a, pages_b, alignment, str(output_path))
+        assert output_path.exists()
+
+        doc = fitz.open(str(output_path))
+        try:
+            full_text = "\n".join(doc[i].get_text() for i in range(doc.page_count))
+        finally:
+            doc.close()
+
+        # sample_a/sample_bのページ1は"alpha text here."→"alpha text here CHANGED."に変わっている。
+        # このテキスト差分由来の文字列がどこかのページに実際に埋め込まれていることを確認する。
+        assert "変更" in full_text, "種別(変更)ラベルがPDFに見当たらない"
+        assert "CHANGED" in full_text, "変更後のテキスト差分がPDFに埋め込まれていない"
+
+        print("OK: test_build_pdf_report_embeds_text_diff_content")
+    finally:
+        path_a.unlink(missing_ok=True)
+        path_b.unlink(missing_ok=True)
+        output_path.unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     test_build_pdf_report_produces_valid_pdf_with_summary_title()
     test_build_pdf_report_with_each_image_size_preset()
+    test_build_pdf_report_embeds_text_diff_content()

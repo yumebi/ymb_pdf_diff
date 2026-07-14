@@ -23,12 +23,17 @@ class ImageView(QGraphicsView):
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
         self._pixmap_item = QGraphicsPixmapItem()
+        # QGraphicsPixmapItemはデフォルトでFastTransformation(ニアレストネイバー)を使うため、
+        # ビュー側のSmoothPixmapTransformを設定していても拡大縮小時にジャギーが出てしまう。
+        # アイテム側にも明示的にスムーズ変換を指定する。
+        self._pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         self._scene.addItem(self._pixmap_item)
         self._placeholder_item = QGraphicsTextItem("")
         self._scene.addItem(self._placeholder_item)
 
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self._zoom = 1.0
         self.setAcceptDrops(True)
 

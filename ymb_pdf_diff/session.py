@@ -73,6 +73,7 @@ def save_session(
     dpi: int = 150,
     threshold: int = 30,
     image_size: str = DEFAULT_IMAGE_SIZE,
+    shift_tolerance: int = 0,
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> None:
     """比較結果を自己完結のzip(.ymbdiff)に保存する。差分のあるページのみキャプチャ・テキスト差分を同梱する。
@@ -80,6 +81,7 @@ def save_session(
     thresholdは画像差分の感度(0-100、小さいほど敏感。GUIの表示設定と同じ値を渡せる)。
     image_size(#新機能11、"small"/"medium"/"large")はキャプチャを埋め込む際の長辺の
     最大ピクセル数を切り替える(GUIの表示設定と同じ値を渡せる)。
+    shift_tolerance(#新機能12)は位置ズレ許容(px、0=無効。GUIの表示設定と同じ値を渡せる)。
     """
     max_dim = resolve_long_edge_max_px(image_size)
     meta = {
@@ -113,8 +115,10 @@ def save_session(
                         for e in diff_page_lines(pages_a[status.a_page], pages_b[status.b_page])
                     ]
                     # 画像差分の感度(#新機能7)。呼び出し元(save_session)経由でGUIの設定値を受け取る。
+                    # shift_tolerance(#新機能12)は位置ズレ許容(px、0=無効)。同じくGUIの設定値を受け取る。
                     regions = diff_page_pair(
-                        pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi, threshold=threshold
+                        pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi, threshold=threshold,
+                        shift_tolerance=shift_tolerance,
                     ).regions
 
                 if status.a_page is not None:

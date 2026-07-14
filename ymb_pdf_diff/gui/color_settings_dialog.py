@@ -14,7 +14,14 @@ from PySide6.QtWidgets import (
 )
 
 from .diff_colors import LABELS, DiffColors
-from .diff_settings import get_image_size, get_threshold, set_image_size, set_threshold
+from .diff_settings import (
+    get_image_size,
+    get_shift_tolerance,
+    get_threshold,
+    set_image_size,
+    set_shift_tolerance,
+    set_threshold,
+)
 
 # レポート画像サイズ(#新機能11): プリセットキーと表示名の対応
 _IMAGE_SIZE_LABELS = {
@@ -77,6 +84,21 @@ class ColorSettingsDialog(QDialog):
         self._threshold_slider.valueChanged.connect(self._on_threshold_changed)
         layout.addLayout(threshold_row)
 
+        # 位置ズレ許容(#新機能12): レンダリングツールの違い等で生じる数ピクセル程度の
+        # 一貫した位置ズレを、比較前のぼかしで吸収して誤検出を減らす。0=無効(従来通り)。
+        # 画像差分の感度と併せて調整することが多いため、すぐ下に配置する。
+        shift_tolerance_row = QHBoxLayout()
+        shift_tolerance_row.addWidget(QLabel("位置ズレ許容(px、0=無効)"))
+        self._shift_tolerance_slider = QSlider(Qt.Orientation.Horizontal)
+        self._shift_tolerance_slider.setRange(0, 10)
+        self._shift_tolerance_slider.setValue(get_shift_tolerance())
+        shift_tolerance_row.addWidget(self._shift_tolerance_slider)
+        self._shift_tolerance_value_label = QLabel(str(get_shift_tolerance()))
+        self._shift_tolerance_value_label.setMinimumWidth(28)
+        shift_tolerance_row.addWidget(self._shift_tolerance_value_label)
+        self._shift_tolerance_slider.valueChanged.connect(self._on_shift_tolerance_changed)
+        layout.addLayout(shift_tolerance_row)
+
         # レポート画像サイズ(#新機能11): PDF/Excelレポート・セッション保存の埋め込み画像サイズ
         image_size_row = QHBoxLayout()
         image_size_row.addWidget(QLabel("レポート画像サイズ"))
@@ -110,6 +132,10 @@ class ColorSettingsDialog(QDialog):
     def _on_threshold_changed(self, value: int) -> None:
         self._threshold_value_label.setText(str(value))
         set_threshold(value)
+
+    def _on_shift_tolerance_changed(self, value: int) -> None:
+        self._shift_tolerance_value_label.setText(str(value))
+        set_shift_tolerance(value)
 
     def _on_image_size_changed(self, index: int) -> None:
         key = self._image_size_combo.itemData(index)

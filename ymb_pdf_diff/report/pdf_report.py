@@ -14,6 +14,7 @@ from ..core import (
     AlignmentResult,
     PageLine,
     PageStatus,
+    diff_page_lines,
     diff_page_pair,
     draw_highlights,
     render_page,
@@ -38,6 +39,25 @@ _SUMMARY_MARGIN_X = 56
 _SUMMARY_LIST_TOP = 230
 _SUMMARY_LIST_BOTTOM = 800
 _SUMMARY_LINE_HEIGHT = 15
+
+# テキスト差分(種別ごとの背景色)。Excelレポートの_FILL_REPLACE等(FFEB9C/C6EFCE/FFC7CE)と
+# 同じ配色をPDF用に0-1のRGB floatへ変換したもの(fitzのdraw_rectはfloatタプルを取る)。
+_DIFF_FILL_REPLACE = (1.0, 0.92, 0.61)  # FFEB9C相当
+_DIFF_FILL_INSERT = (0.78, 0.94, 0.81)  # C6EFCE相当
+_DIFF_FILL_DELETE = (1.0, 0.78, 0.81)  # FFC7CE相当
+_DIFF_KIND_LABEL = {"replace": "変更", "insert": "追加", "delete": "削除"}
+_DIFF_KIND_FILL = {
+    "replace": _DIFF_FILL_REPLACE,
+    "insert": _DIFF_FILL_INSERT,
+    "delete": _DIFF_FILL_DELETE,
+}
+
+_DIFF_MARGIN_X = 30
+_DIFF_TOP_Y = 60
+_DIFF_BOTTOM_Y = _LANDSCAPE_HEIGHT - 30
+_DIFF_LINE_HEIGHT = 12  # テキスト差分1行あたりの高さ見積もり(pt)
+_DIFF_ENTRY_PADDING = 6  # エントリ上下の余白(pt)
+_VISUAL_ONLY_NOTE = "テキストは同一です。画像(見た目)のみ差分があります。"
 
 
 def _shrink_for_embed(image: Image.Image, max_dim: int) -> bytes:
@@ -102,13 +122,18 @@ def _build_summary_pages(
 
 
 def _build_changed_page(
-    doc: "fitz.Document", status: PageStatus, pdf_a_path: str, pdf_b_path: str, dpi: int, threshold: int, max_dim: int
+    doc: "fitz.Document", status: PageStatus, pdf_a_path: str, pdf_b_path: str, dpi: int, threshold: int, max_dim: int,
+    shift_tolerance: int = 0,
 ) -> None:
     page = doc.new_page(width=_LANDSCAPE_WIDTH, height=_LANDSCAPE_HEIGHT)
     page.insert_text((30, 30), _status_line(status), fontname=_FONT, fontsize=13)
 
     # 画像差分の感度(#新機能7)。呼び出し元(build_pdf_report)経由でGUIの設定値を受け取る。
-    img_result = diff_page_pair(pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi, threshold=threshold)
+    # shift_tolerance(#新機能12)は位置ズレ許容(px、0=無効)。同じくGUIの設定値を受け取る。
+    img_result = diff_page_pair(
+        pdf_a_path, status.a_page, pdf_b_path, status.b_page, dpi=dpi, threshold=threshold,
+        shift_tolerance=shift_tolerance,
+    )
     img_a = draw_highlights(render_page(pdf_a_path, status.a_page, dpi=dpi), img_result.regions, color="red")
     img_b = draw_highlights(render_page(pdf_b_path, status.b_page, dpi=dpi), img_result.regions, color="red")
 
@@ -117,6 +142,69 @@ def _build_changed_page(
     rect_b = fitz.Rect(40 + half_width, 50, 40 + half_width * 2, _LANDSCAPE_HEIGHT - 20)
     page.insert_image(rect_a, stream=_shrink_for_embed(img_a, max_dim))
     page.insert_image(rect_b, stream=_shrink_for_embed(img_b, max_dim))
+
+
+def _estimate_diff_entry_height(entry) -> float:
+    """テキスト差分1件を描画するのに必要な高さ(pt)を見積もる。
+
+    変更前/変更後の行数が多いほど折り返しで縦に伸びるため、Excelレポート側の
+    行高計算(行数 x 15pt)と同じ考え方で、行数に応じた高さを返す。
+    """
+    line_count = max(len(entry.before), len(entry.after), 1)
+    return line_count * _DIFF_LINE_HEIGHT + _DIFF_ENTRY_PADDING * 2
+
+
+def _draw_diff_entry(page: "fitz.Page", y: float, width: float, entry) -> float:
+    """テキスト差分1件を背景色付きで描画し、実際に使った高さ(pt)を返す。"""
+    label = _DIFF_KIND_LABEL.get(entry.kind, entry.kind)
+    before_text = "\n".join(entry.before)
+    after_text = "\n".join(entry.after)
+    text = f"[{label}] 変更前: {before_text} / 変更後: {after_text}"
+    height = _estimate_diff_entry_height(entry)
+    rect = fitz.Rect(_DIFF_MARGIN_X, y, _DIFF_MARGIN_X + width, y + height)
+
+    fill = _DIFF_KIND_FILL.get(entry.kind)
+    if fill is not None:
+        page.draw_rect(rect, fill=fill, width=0)
+    page.insert_textbox(rect, text, fontname=_FONT, fontsize=10)
+    return height
+
+
+def _new_diff_page(doc: "fitz.Document", title: str) -> "fitz.Page":
+    page = doc.new_page(width=_LANDSCAPE_WIDTH, height=_LANDSCAPE_HEIGHT)
+    page.insert_text((_DIFF_MARGIN_X, 30), title, fontname=_FONT, fontsize=13)
+    return page
+
+
+def _build_text_diff_pages(doc: "fitz.Document", status: PageStatus, entries: List) -> None:
+    """変更ページのテキスト差分(diff_page_lines)をExcelレポート同様の一覧として追加する。
+
+    キャプチャ画像は_build_changed_pageでページいっぱいに配置しているため、同じページ内に
+    差分一覧を並べる余白は無い。そのため常に専用の追加ページから開始し、1ページに収まりきら
+    ない場合は「(続き)」ページを必要な数だけ追加していく(厳密な整形はせず、次の1件が入るかどうか
+    だけを見る単純なポジション管理)。
+    """
+    a_disp = status.a_page + 1 if status.a_page is not None else "-"
+    b_disp = status.b_page + 1 if status.b_page is not None else "-"
+
+    width = _LANDSCAPE_WIDTH - _DIFF_MARGIN_X * 2
+    page = _new_diff_page(doc, f"ページ A{a_disp}/B{b_disp} 比較 - テキスト差分")
+    y = _DIFF_TOP_Y
+
+    for entry in entries:
+        height = _estimate_diff_entry_height(entry)
+        if y + height > _DIFF_BOTTOM_Y:
+            page = _new_diff_page(doc, f"ページ A{a_disp}/B{b_disp} 比較(続き)")
+            y = _DIFF_TOP_Y
+        y += _draw_diff_entry(page, y, width, entry)
+
+
+def _build_visual_only_note_page(doc: "fitz.Document", status: PageStatus) -> None:
+    """テキストは同一だが画像(見た目)のみ差分があるページ用に、Excelレポートと同じ注記を追加する。"""
+    a_disp = status.a_page + 1 if status.a_page is not None else "-"
+    b_disp = status.b_page + 1 if status.b_page is not None else "-"
+    page = _new_diff_page(doc, f"ページ A{a_disp}/B{b_disp} 比較 - テキスト差分")
+    page.insert_text((_DIFF_MARGIN_X, _DIFF_TOP_Y), _VISUAL_ONLY_NOTE, fontname=_FONT, fontsize=11)
 
 
 def _build_single_side_page(
@@ -143,6 +231,7 @@ def build_pdf_report(
     dpi: int = 150,
     threshold: int = 30,
     image_size: str = DEFAULT_IMAGE_SIZE,
+    shift_tolerance: int = 0,
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> None:
     """比較結果をPDFレポートとして書き出す。
@@ -155,6 +244,11 @@ def build_pdf_report(
     埋め込み画像はimage_size(#新機能11、"small"/"medium"/"large")に応じた長辺サイズへ
     縮小し、JPEGとして埋め込むことでファイルサイズを抑える。
     thresholdは画像差分の感度(0-100、小さいほど敏感。GUIの表示設定と同じ値を渡せる)。
+    shift_tolerance(#新機能12)は位置ズレ許容(px、0=無効)。GUIの表示設定と同じ値を渡せる。
+    変更ページ(changed)については、Excelレポートと同様にdiff_page_linesによる行単位の
+    テキスト差分(種別/変更前/変更後、背景色つき)を専用の追加ページに書き出す。1ページに
+    収まらない場合は「(続き)」ページを必要な数だけ追加する。テキストが同一で見た目のみ
+    差分があるページ(visual_only)には、Excelレポートと同じ注記のみを追加する。
     """
     max_dim = resolve_long_edge_max_px(image_size)
     doc = fitz.open()
@@ -164,7 +258,14 @@ def build_pdf_report(
         total = len(alignment.page_statuses)
         for i, status in enumerate(alignment.page_statuses):
             if status.status == "changed" and status.a_page is not None and status.b_page is not None:
-                _build_changed_page(doc, status, pdf_a_path, pdf_b_path, dpi, threshold, max_dim)
+                _build_changed_page(
+                    doc, status, pdf_a_path, pdf_b_path, dpi, threshold, max_dim, shift_tolerance=shift_tolerance
+                )
+                entries = diff_page_lines(pages_a[status.a_page], pages_b[status.b_page])
+                if entries:
+                    _build_text_diff_pages(doc, status, entries)
+                elif status.visual_only:
+                    _build_visual_only_note_page(doc, status)
             elif status.status == "inserted" and status.b_page is not None:
                 _build_single_side_page(doc, status, pdf_b_path, status.b_page, "B", dpi, max_dim)
             elif status.status == "deleted" and status.a_page is not None:
