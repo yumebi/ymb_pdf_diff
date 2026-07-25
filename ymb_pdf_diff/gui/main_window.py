@@ -51,6 +51,7 @@ from .diff_settings import get_image_size, get_shift_tolerance, get_threshold
 from .image_view import ImageView
 from .page_range_dialog import PageRangeDialog
 from .window_state import save_window_geometry, restore_window_geometry
+from . import ymb_tokens
 
 _ORG_NAME = "YMB"
 _APP_NAME = "YMB PDF DIFF"
@@ -70,34 +71,43 @@ _KIND_TO_COLOR_KEY = {"replace": "changed", "insert": "inserted", "delete": "del
 # 衝突して見えにくくなる問題への対策として、テーマに依存せず常に見える目印を行頭に付ける。
 _SELECTION_MARKER = "▶ "
 
-_BUTTON_STYLE = """
-QPushButton {
-    background-color: #D7E3F4;
-    border: 1px solid #7E96B8;
-    border-radius: 4px;
+# QSSはCSS変数を解釈しないため、YMB共通トークンの値を差し込んで組み立てる。
+# ymb_tokens.py は ymb-ui が ymb-base.css から生成しているので直接編集しないこと。
+#
+# 差分表示の配色(diff_colors.py)はここに含めない。あちらは設定画面で
+# ユーザーが変更できる機能であり、共通トークンで上書きしてはいけない。
+_T = ymb_tokens.palette()
+
+_BUTTON_STYLE = f"""
+QPushButton {{
+    background-color: {_T["accent"]};
+    border: 1px solid {_T["accent"]};
+    border-radius: {_T["radius_sm"]};
     padding: 4px 12px;
     margin: 3px;
-    color: #15233D;
-}
-QPushButton:hover {
-    background-color: #BFD3EE;
-    border-color: #4C7BC2;
-}
-QPushButton:pressed {
-    background-color: #9FBBE0;
-}
-QPushButton:checked {
-    background-color: #6FA0DD;
-    border-color: #2E5FA0;
-}
-QPushButton:disabled {
-    background-color: #E0E0E0;
-    border-color: #C0C0C0;
-    color: #909090;
-}
-QListWidget::item:selected {
-    border: 2px solid #2E5FA0;
-}
+    color: {_T["accent_fg"]};
+    font-family: {_T["font"]};
+    font-size: {_T["fs_label"]};
+}}
+QPushButton:hover {{
+    background-color: {_T["accent_hover"]};
+    border-color: {_T["accent_hover"]};
+}}
+QPushButton:pressed {{
+    background-color: {_T["accent_hover"]};
+}}
+QPushButton:checked {{
+    background-color: {_T["accent_hover"]};
+    border-color: {_T["accent"]};
+}}
+QPushButton:disabled {{
+    background-color: {_T["surface_alt"]};
+    border-color: {_T["border"]};
+    color: {_T["fg_muted"]};
+}}
+QListWidget::item:selected {{
+    border: 2px solid {_T["accent"]};
+}}
 """
 
 
