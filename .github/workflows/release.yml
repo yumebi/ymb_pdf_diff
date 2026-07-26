@@ -17,7 +17,28 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
+  # バージョンを上げてタグを打つ前に走らせる。後ろに置くと、テストが落ちたときに
+  # リリースされないタグだけが残ってしまう。
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        # GUIのスモークテストを画面なしのランナーで動かすため
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest tests -q
+
   determine-version:
+    needs: test
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
