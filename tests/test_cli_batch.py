@@ -7,6 +7,7 @@ python -m ymb_pdf_diff.cli --batch DIR_A DIR_B --out OUT_DIR [--excel-only] をs
   引き続き動作すること(後方互換)
 を確認する。
 """
+import os
 import shutil
 import subprocess
 import sys
@@ -55,6 +56,13 @@ def test_batch_mode_compares_matching_pairs_and_reports_skipped_files():
             cwd=str(_PROJECT_ROOT),
             capture_output=True,
             text=True,
+            # 読み書き両側をUTF-8に固定する。
+            # 読む側だけ指定すると、CLIがcp932で書いた日本語をUTF-8として
+            # 解釈して文字化けする。逆に何も指定しないと、英語ロケールの
+            # Windows(GitHubランナー)では既定のcp1252が日本語を復号できず
+            # stdout が None になる。どちらも日本語ロケールでは再現しない。
+            encoding="utf-8",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
 
@@ -87,6 +95,13 @@ def test_single_pair_positional_mode_still_works():
             cwd=str(_PROJECT_ROOT),
             capture_output=True,
             text=True,
+            # 読み書き両側をUTF-8に固定する。
+            # 読む側だけ指定すると、CLIがcp932で書いた日本語をUTF-8として
+            # 解釈して文字化けする。逆に何も指定しないと、英語ロケールの
+            # Windows(GitHubランナー)では既定のcp1252が日本語を復号できず
+            # stdout が None になる。どちらも日本語ロケールでは再現しない。
+            encoding="utf-8",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert excel_path.exists()
