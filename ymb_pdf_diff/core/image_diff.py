@@ -132,7 +132,9 @@ def overlay_images(img_a: Image.Image, img_b: Image.Image) -> Image.Image:
     gray_a = np.array(canvas_a.convert("L"), dtype=np.uint8)
     gray_b = np.array(canvas_b.convert("L"), dtype=np.uint8)
     rgb = np.stack([gray_b, np.minimum(gray_a, gray_b), gray_a], axis=-1).astype(np.uint8)
-    return Image.fromarray(rgb, mode="RGB")
+    # mode引数は Pillow 13(2026-10)で削除される。(H, W, 3) の uint8 配列なので
+    # 指定しなくてもRGBと判定される。
+    return Image.fromarray(rgb)
 
 
 def draw_highlights(
