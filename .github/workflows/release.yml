@@ -20,7 +20,11 @@ jobs:
   # バージョンを上げてタグを打つ前に走らせる。後ろに置くと、テストが落ちたときに
   # リリースされないタグだけが残ってしまう。
   test:
-    runs-on: ubuntu-latest
+    # ubuntu-latest では PySide6 のインポート時点で libEGL.so.1 を要求され、
+    # QT_QPA_PLATFORM=offscreen を指定しても回避できない。追加でシステム
+    # ライブラリを入れる手もあるが、配布物と同じWindowsで検証する方が
+    # 実際の動作に近いのでこちらにする。
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
