@@ -1,8 +1,11 @@
-PySide6>=6.6
-PyMuPDF>=1.23
-pytesseract>=0.3.10
-openpyxl>=3.1
-Pillow>=10.0
-numpy>=1.26
-requests>=2.31
-packaging>=23.0
+# 下限は実際に検証した版に合わせている。
+# numpy 2.1 以降は Python 3.10+、2.3 以降は 3.11+、2.5 以降は 3.12+ を要求するため、
+# この下限は Python 3.12 以上を前提にする。CI と .venv313 がその前提。
+PySide6>=6.11
+PyMuPDF>=1.28
+pytesseract>=0.3.13
+openpyxl>=3.1.5
+Pillow>=12.3
+numpy>=2.5
+requests>=2.34
+packaging>=26.0

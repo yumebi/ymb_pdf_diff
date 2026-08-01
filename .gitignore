@@ -1,4 +1,6 @@
 .venv/
+# Python のバージョンごとに venv を分けることがある(.venv313 など)
+.venv*/
 __pycache__/
 *.pyc
 build/
