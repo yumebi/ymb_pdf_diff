@@ -42,7 +42,7 @@ from ..core import (
 )
 from .. import __version__
 from ..assets import asset_path
-from ..report import build_excel_report, build_pdf_report
+from ..report import build_csv_report, build_excel_report, build_html_report, build_pdf_report
 from ..session import LoadedSession, load_session, save_session
 from ..update_check import check_for_update
 from .color_settings_dialog import ColorSettingsDialog
@@ -325,6 +325,17 @@ class MainWindow(QMainWindow):
         self.btn_export_pdf.clicked.connect(self._export_pdf)
         self.btn_export_pdf.setEnabled(False)
         toolbar.addWidget(self.btn_export_pdf)
+
+        # HTML/CSV差分レポート出力(#新機能13)。Excel/PDFと同様に比較実行後に有効化する。
+        self.btn_export_html = QPushButton("HTML出力")
+        self.btn_export_html.clicked.connect(self._export_html)
+        self.btn_export_html.setEnabled(False)
+        toolbar.addWidget(self.btn_export_html)
+
+        self.btn_export_csv = QPushButton("CSV出力")
+        self.btn_export_csv.clicked.connect(self._export_csv)
+        self.btn_export_csv.setEnabled(False)
+        toolbar.addWidget(self.btn_export_csv)
 
         self.btn_save_session = QPushButton("セッション保存")
         self.btn_save_session.clicked.connect(self._save_session)
@@ -749,6 +760,8 @@ class MainWindow(QMainWindow):
         self._populate_diff_list()
         self.btn_export.setEnabled(True)
         self.btn_export_pdf.setEnabled(True)
+        self.btn_export_html.setEnabled(True)
+        self.btn_export_csv.setEnabled(True)
         self.btn_save_session.setEnabled(True)
         self._update_jump_buttons_enabled()
 
@@ -984,6 +997,60 @@ class MainWindow(QMainWindow):
         progress_dialog.close()
         self.statusBar().showMessage(f"PDF出力完了: {path}")
 
+    def _export_html(self) -> None:
+        """HTML差分レポート出力(#新機能13)。Excel/PDFと同様の流れでbuild_html_reportを呼ぶ。"""
+        if self.alignment is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "HTMLレポートを保存", "diff_report.html", "HTML Files (*.html)")
+        if not path:
+            return
+
+        progress_dialog = self._make_progress_dialog("HTML出力中", "HTMLレポートを作成中...")
+
+        def progress(current: int, total: int) -> None:
+            progress_dialog.setValue(int(100 * current / max(total, 1)))
+            QApplication.processEvents()
+
+        try:
+            build_html_report(
+                self.pdf_a_path, self.pdf_b_path, self.pages_a, self.pages_b, self.alignment, path,
+                threshold=get_threshold(), shift_tolerance=get_shift_tolerance(), image_size=get_image_size(),
+                progress_callback=progress,
+            )
+        except Exception as exc:  # noqa: BLE001 - ユーザーに失敗内容を見せるため捕捉
+            progress_dialog.close()
+            QMessageBox.critical(self, "エラー", f"HTML出力に失敗しました: {exc}")
+            return
+        progress_dialog.close()
+        self.statusBar().showMessage(f"HTML出力完了: {path}")
+
+    def _export_csv(self) -> None:
+        """CSV差分レポート出力(#新機能13)。Excel/PDFと同様の流れでbuild_csv_reportを呼ぶ。"""
+        if self.alignment is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "CSVレポートを保存", "diff_report.csv", "CSV Files (*.csv)")
+        if not path:
+            return
+
+        progress_dialog = self._make_progress_dialog("CSV出力中", "CSVレポートを作成中...")
+
+        def progress(current: int, total: int) -> None:
+            progress_dialog.setValue(int(100 * current / max(total, 1)))
+            QApplication.processEvents()
+
+        try:
+            build_csv_report(
+                self.pdf_a_path, self.pdf_b_path, self.pages_a, self.pages_b, self.alignment, path,
+                threshold=get_threshold(), shift_tolerance=get_shift_tolerance(), image_size=get_image_size(),
+                progress_callback=progress,
+            )
+        except Exception as exc:  # noqa: BLE001 - ユーザーに失敗内容を見せるため捕捉
+            progress_dialog.close()
+            QMessageBox.critical(self, "エラー", f"CSV出力に失敗しました: {exc}")
+            return
+        progress_dialog.close()
+        self.statusBar().showMessage(f"CSV出力完了: {path}")
+
     def _save_session(self) -> None:
         if self.alignment is None or self._loaded_session is not None:
             QMessageBox.warning(self, "確認", "保存するには先に比較を実行してください。")
@@ -1030,6 +1097,8 @@ class MainWindow(QMainWindow):
         self._populate_diff_list()
         self.btn_export.setEnabled(False)
         self.btn_export_pdf.setEnabled(False)
+        self.btn_export_html.setEnabled(False)
+        self.btn_export_csv.setEnabled(False)
         self.btn_save_session.setEnabled(False)
         self._update_jump_buttons_enabled()
 
