@@ -209,7 +209,6 @@ class _CompareThread(QThread):
     failed = Signal(str)
     range_error = Signal(str)
     cancelled = Signal()
-
     def __init__(
         self,
         pdf_a_path: str,
@@ -454,6 +453,12 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.update_label)
 
     def closeEvent(self, event) -> None:
+        # 比較スレッド実行中にウィンドウを閉じると、スレッドが動き続けたまま
+        # ウィジェット破棄後にシグナルが飛んでクラッシュするため、停止を待つ。
+        if self._compare_thread is not None:
+            thread = self._compare_thread
+            thread.request_cancel()
+            thread.wait(3000)  # 最大3秒待機(キャンセル協力しない場合は破棄側に任せる)
         save_window_geometry(self)
         super().closeEvent(event)
 
@@ -620,6 +625,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "確認", "ファイルA・Bを両方選択してください。")
             return
 
+        # バックグラウンドスレッド実行中は再実行しない(QThreadの多重起動を防ぐ)
+        if self._compare_thread is not None:
+            self.statusBar().showMessage("比較処理中です。完了をお待ちください。")
+            return
+
         self._loaded_session = None
 
         progress_dialog = QProgressDialog("PDFを読み込み中...", "キャンセル", 0, 100, self)
@@ -679,6 +689,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "ページ範囲エラー", str(exc))
             self.statusBar().showMessage("比較失敗(ページ範囲指定エラー)")
             return
+        except Exception as exc:  # noqa: BLE001 - GUIにエラー内容を伝えるため捕捉
+            progress_dialog.close()
+            QMessageBox.critical(self, "エラー", str(exc))
+            self.statusBar().showMessage("比較失敗")
+            return
 
         self.pages_a, self.pages_b, self.alignment = pages_a, pages_b, alignment
         progress_dialog.setValue(100)
@@ -710,8 +725,10 @@ class MainWindow(QMainWindow):
             self._compare_progress.close()
             self._compare_progress = None
         self._compare_thread = None
-        QMessageBox.critical(self, "OCRエラー", message)
-        self.statusBar().showMessage("比較失敗(OCR利用不可)")
+        # OCRエラーに限らず、ファイル読み込み失敗等の汎用エラーもここに来るため
+        # タイトルを「OCRエラー」固定にしない(内容はメッセージで伝える)。
+        QMessageBox.critical(self, "エラー", message)
+        self.statusBar().showMessage("比較失敗")
 
     def _on_compare_range_error(self, message: str) -> None:
         if self._compare_progress is not None:
