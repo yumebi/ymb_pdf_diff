@@ -58,6 +58,17 @@ _APP_NAME = "YMB PDF DIFF"
 _RECENT_PAIRS_KEY = "recent/pairs"
 _RECENT_PAIRS_MAX = 5
 
+
+def _safe_http_url(url) -> str:
+    """http/https で始まるURLのみを返す。それ以外(javascript:等)は空文字(HTML注入対策)。"""
+    if not isinstance(url, str):
+        return ""
+    url = url.strip()
+    lower = url.lower()
+    if lower.startswith("http://") or lower.startswith("https://"):
+        return url
+    return ""
+
 _STATUS_LABEL = {
     "unchanged": "差分なし",
     "changed": "差分あり",
@@ -477,7 +488,12 @@ class MainWindow(QMainWindow):
         info = check_for_update(__version__)
         if info is None:
             return
-        self.update_label.setText(f'<a href="{info.download_url}">新しいバージョン v{info.latest_version} があります</a>')
+        # リモート由来のURL・バージョン文字列をHTMLに入れる前に検証・エスケープする(HTML注入対策)。
+        url = _safe_http_url(getattr(info, "download_url", ""))
+        if not url:
+            return
+        version = html.escape(str(getattr(info, "latest_version", "")))
+        self.update_label.setText(f'<a href="{html.escape(url, quote=True)}">新しいバージョン v{version} があります</a>')
 
     def _apply_zoom(self, factor: float) -> None:
         self.view_a.set_zoom(factor, emit=False)
@@ -923,8 +939,9 @@ class MainWindow(QMainWindow):
                 before = self._char_segments_to_html(segs_before, bg) or "(なし)"
                 after = self._char_segments_to_html(segs_after, bg) or "(なし)"
             else:
-                before = "<br>".join(entry.before) or "(なし)"
-                after = "<br>".join(entry.after) or "(なし)"
+                # 追加/削除行はPDF抽出テキストをそのまま入れるため、HTMLとして解釈されないようエスケープする。
+                before = "<br>".join(html.escape(line) for line in entry.before) or "(なし)"
+                after = "<br>".join(html.escape(line) for line in entry.after) or "(なし)"
             html_parts.append(
                 f'<div style="background:{bg};color:{fg};padding:4px;margin:2px 0;">'
                 f"<b>[{_TEXT_KIND_LABEL[entry.kind]}]</b> 変更前: {before} / 変更後: {after}</div>"
