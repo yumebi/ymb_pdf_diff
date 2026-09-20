@@ -5,7 +5,7 @@
 
 #define AppName "YMB PDF差分抽出ツール"
 #define ExeName "YMB PDF DIFF.exe"
-#define AppVersion "1.1.3"
+#define AppVersion "1.1.4"
 #define DistDir "..\..\dist\YMB PDF DIFF"
 
 [Setup]
